@@ -1,5 +1,5 @@
 // ==========================================
-// Supabase リアルタイム同期
+// Supabase リアルタイム同期（Broadcast方式）
 // ==========================================
 
 import { supabase, SESSION_ID } from './supabase';
@@ -12,6 +12,19 @@ const STATE_KEYS = [
   'finalsVenueId', 'initialized', 'teams', 'allTeamMatches',
 ] as const;
 
+// このタブ固有のID（自分のブロードキャストを無視するため）
+const TAB_ID = Math.random().toString(36).slice(2);
+
+// Broadcastチャンネル（保存と通知で共有）
+let broadcastChannel: ReturnType<typeof supabase.channel> | null = null;
+
+function getChannel() {
+  if (!broadcastChannel) {
+    broadcastChannel = supabase.channel('tournament-broadcast');
+  }
+  return broadcastChannel;
+}
+
 // stateから保存対象のデータだけ抽出
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function extractSyncData(state: Record<string, any>) {
@@ -23,7 +36,7 @@ export function extractSyncData(state: Record<string, any>) {
   return data;
 }
 
-// Supabaseに状態を保存（デバウンス付き）
+// Supabaseに状態を保存（デバウンス付き）+ Broadcast通知
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let savePromise: Promise<void> | null = null;
 
@@ -44,7 +57,19 @@ export function saveToSupabase(state: Record<string, any>) {
             state: data,
             updated_at: new Date().toISOString(),
           });
-        if (error) console.error('[Sync] 保存エラー:', error.message);
+        if (error) {
+          console.error('[Sync] 保存エラー:', error.message);
+          return;
+        }
+
+        // 保存成功 → 他のタブに「更新あり」を通知
+        const channel = getChannel();
+        channel.send({
+          type: 'broadcast',
+          event: 'state-updated',
+          payload: { tabId: TAB_ID, timestamp: Date.now() },
+        });
+        console.log('[Sync] 保存+通知完了');
       } catch (e) {
         console.error('[Sync] 保存失敗:', e);
       } finally {
@@ -78,34 +103,37 @@ export async function loadFromSupabase() {
   }
 }
 
-// Realtimeサブスクリプション開始
+// Broadcast サブスクリプション開始
+// 他のタブが保存したら通知を受け取り、最新データをAPIから取得
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function subscribeToChanges(onUpdate: (state: Record<string, any>) => void) {
-  const channel = supabase
-    .channel('tournament-sync')
-    .on(
-      'postgres_changes',
-      {
-        event: '*',  // INSERT, UPDATE, DELETE すべて監視
-        schema: 'public',
-        table: 'tournament_state',
-        filter: `id=eq.${SESSION_ID}`,
-      },
-      (payload) => {
-        console.log('[Sync] Realtime受信:', payload.eventType);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const newState = payload.new as { state: Record<string, any> };
-        if (newState?.state) {
-          console.log('[Sync] state更新適用');
-          onUpdate(newState.state);
-        }
+  const channel = getChannel();
+
+  channel
+    .on('broadcast', { event: 'state-updated' }, async (message) => {
+      const senderTab = message.payload?.tabId;
+
+      // 自分が送った通知は無視
+      if (senderTab === TAB_ID) {
+        console.log('[Sync] 自分の通知 → スキップ');
+        return;
       }
-    )
+
+      console.log('[Sync] 他のタブから更新通知を受信');
+
+      // Supabaseから最新データを取得
+      const newState = await loadFromSupabase();
+      if (newState) {
+        console.log('[Sync] 最新データ適用');
+        onUpdate(newState);
+      }
+    })
     .subscribe((status) => {
-      console.log('[Sync] Realtimeステータス:', status);
+      console.log('[Sync] Broadcastステータス:', status);
     });
 
   return () => {
     supabase.removeChannel(channel);
+    broadcastChannel = null;
   };
 }

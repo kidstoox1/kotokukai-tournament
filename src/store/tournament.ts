@@ -3,6 +3,7 @@
 // ==========================================
 
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type { Player, Match, PhaseType, TournamentData, Category, Team, TeamMatch, MatchPlayer } from '@/lib/types';
 import { DEFAULT_CATEGORIES, VENUES, PHASE_TYPES, RESULT, generateSamplePlayers } from '@/lib/constants';
 import { generateId } from '@/lib/uuid';
@@ -81,7 +82,9 @@ interface TournamentState {
   setTeamBoutLineup: (matchId: string, lineup: { position: string; playerA: MatchPlayer | null; playerB: MatchPlayer | null }[]) => void;
 }
 
-export const useTournamentStore = create<TournamentState>((set, get) => ({
+export const useTournamentStore = create<TournamentState>()(
+  persist(
+    (set, get) => ({
   categories: [...DEFAULT_CATEGORIES],
   players: [],
   allMatches: [],
@@ -726,5 +729,27 @@ export const useTournamentStore = create<TournamentState>((set, get) => ({
       }),
     }));
   },
-}));
+}),
+    {
+      name: 'kotokukai-tournament',
+      // 関数（算出値・アクション）は保存しない。データのみ永続化
+      partialize: (state) => ({
+        categories: state.categories,
+        players: state.players,
+        allMatches: state.allMatches,
+        leagueGroups: state.leagueGroups,
+        catPhases: state.catPhases,
+        venueAssignments: state.venueAssignments,
+        tournamentData: state.tournamentData,
+        catStartFormats: state.catStartFormats,
+        catAdvanceCounts: state.catAdvanceCounts,
+        catThirdPlace: state.catThirdPlace,
+        finalsVenueId: state.finalsVenueId,
+        initialized: state.initialized,
+        teams: state.teams,
+        allTeamMatches: state.allTeamMatches,
+      }),
+    }
+  )
+);
 

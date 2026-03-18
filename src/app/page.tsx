@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useTournamentStore } from '@/store/tournament';
 import {
   VENUES,
@@ -3424,6 +3424,11 @@ function SpectatorPage() {
 // ==========================================
 export default function Home() {
   const [page, setPage] = useState<PageType>('admin');
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   const navItems: { key: PageType; label: string }[] = [
     { key: 'admin', label: '管理' },
@@ -3431,6 +3436,18 @@ export default function Home() {
     { key: 'monitor', label: 'モニター' },
     { key: 'spectator', label: '観覧' },
   ];
+
+  // Hydration待ち（localStorageからの復元完了まで）
+  if (!hydrated) {
+    return (
+      <div className="min-h-screen bg-[#0B1120] flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-2xl font-extrabold text-white mb-2">日本拳法 孝徳会</div>
+          <div className="text-sm text-gray-400">大会運営システム読み込み中...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-app-bg text-[#D6DCE8]">

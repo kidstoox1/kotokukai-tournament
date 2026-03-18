@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+@theme {
+  /* コートカラー */
+  --color-court-a: #E74C3C;
+  --color-court-b: #3498DB;
+  --color-court-c: #2ECC71;
+  --color-court-d: #F39C12;
+
+  /* フェーズカラー */
+  --color-phase-setup: #86EFAC;
+  --color-phase-league: #60A5FA;
+  --color-phase-league-final: #F472B6;
+  --color-phase-pre-tournament: #FBBF24;
+  --color-phase-final-tournament: #FCA5A5;
+
+  /* メダルカラー */
+  --color-medal-gold: #FFD700;
+  --color-medal-silver: #C0C0C0;
+  --color-medal-bronze: #CD7F32;
+
+  /* 選手カラー */
+  --color-player-red: #EF4444;
+  --color-player-white: #FFFFFF;
+
+  /* 結果カラー */
+  --color-win: #22C55E;
+  --color-draw: #F59E0B;
+
+  /* アプリ背景 */
+  --color-app-bg: #0B0F19;
+  --color-card-bg: rgba(255, 255, 255, 0.03);
+  --color-card-border: rgba(255, 255, 255, 0.07);
+  --color-header-bg: #111827;
+  --color-modal-bg: #1F2937;
+}
+
+body {
+  background: var(--color-app-bg);
+  color: #D6DCE8;
+}

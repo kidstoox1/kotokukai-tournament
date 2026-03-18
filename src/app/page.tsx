@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useTournamentStore } from '@/store/tournament';
+import { saveToSupabase, loadFromSupabase, subscribeToChanges } from '@/lib/sync';
 import {
   VENUES,
   PHASE_TYPES,
@@ -3470,6 +3471,55 @@ function SpectatorPage() {
 export default function Home() {
   const [page, setPage] = useState<PageType>('admin');
   const [hydrated, setHydrated] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'connecting' | 'connected' | 'offline'>('connecting');
+  const isRemoteUpdate = useRef(false);
+
+  // --- Supabase リアルタイム同期 ---
+  useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+
+    const init = async () => {
+      // 1. Supabaseから最新状態を読み込み
+      try {
+        const remoteState = await loadFromSupabase();
+        if (remoteState && remoteState.initialized) {
+          // リモートにデータがあればそちらを優先
+          isRemoteUpdate.current = true;
+          useTournamentStore.setState(remoteState);
+          setTimeout(() => { isRemoteUpdate.current = false; }, 100);
+        } else {
+          // リモートが空ならローカル(localStorage)のデータをSupabaseに保存
+          const localState = useTournamentStore.getState();
+          if (localState.initialized) {
+            saveToSupabase(localState as unknown as Record<string, unknown>);
+          }
+        }
+        setSyncStatus('connected');
+      } catch {
+        setSyncStatus('offline');
+      }
+
+      // 2. Realtimeサブスクリプション（他端末からの変更を受信）
+      unsubscribe = subscribeToChanges((newState) => {
+        isRemoteUpdate.current = true;
+        useTournamentStore.setState(newState);
+        setTimeout(() => { isRemoteUpdate.current = false; }, 100);
+      });
+    };
+
+    init();
+    return () => { if (unsubscribe) unsubscribe(); };
+  }, []);
+
+  // 3. ローカルの変更をSupabaseに保存（リモート更新時はスキップ）
+  useEffect(() => {
+    const unsub = useTournamentStore.subscribe((state) => {
+      if (!isRemoteUpdate.current) {
+        saveToSupabase(state as unknown as Record<string, unknown>);
+      }
+    });
+    return unsub;
+  }, []);
 
   useEffect(() => {
     setHydrated(true);
@@ -3504,6 +3554,19 @@ export default function Home() {
           </div>
           <div className="text-[10px] text-gray-500 mt-0.5">
             Tournament Management System
+          </div>
+          {/* 同期状態 */}
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <span
+              className="w-2 h-2 rounded-full"
+              style={{
+                background: syncStatus === 'connected' ? '#22C55E' : syncStatus === 'connecting' ? '#F59E0B' : '#EF4444',
+                boxShadow: syncStatus === 'connected' ? '0 0 6px #22C55E' : 'none',
+              }}
+            />
+            <span className="text-[10px] text-gray-400">
+              {syncStatus === 'connected' ? 'リアルタイム同期中' : syncStatus === 'connecting' ? '接続中...' : 'オフライン'}
+            </span>
           </div>
         </div>
         <nav className="flex gap-1 flex-wrap">

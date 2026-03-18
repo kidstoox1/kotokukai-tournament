@@ -86,20 +86,24 @@ export function subscribeToChanges(onUpdate: (state: Record<string, any>) => voi
     .on(
       'postgres_changes',
       {
-        event: 'UPDATE',
+        event: '*',  // INSERT, UPDATE, DELETE すべて監視
         schema: 'public',
         table: 'tournament_state',
         filter: `id=eq.${SESSION_ID}`,
       },
       (payload) => {
+        console.log('[Sync] Realtime受信:', payload.eventType);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const newState = payload.new as { state: Record<string, any> };
         if (newState?.state) {
+          console.log('[Sync] state更新適用');
           onUpdate(newState.state);
         }
       }
     )
-    .subscribe();
+    .subscribe((status) => {
+      console.log('[Sync] Realtimeステータス:', status);
+    });
 
   return () => {
     supabase.removeChannel(channel);

@@ -1937,6 +1937,7 @@ function AdminPage() {
 
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
   const [recordingMatch, setRecordingMatch] = useState<Match | null>(null);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [nextPhaseModal, setNextPhaseModal] = useState<{ catId: string; currentPhase: PhaseType } | null>(null);
   const [confirmRevert, setConfirmRevert] = useState<string | null>(null);
 
@@ -1976,7 +1977,7 @@ function AdminPage() {
             )}
             <button
               className="px-3.5 py-[7px] rounded-md bg-gray-600 text-white text-xs font-semibold cursor-pointer border-none"
-              onClick={reset}
+              onClick={() => setShowResetConfirm(true)}
             >
               リセット
             </button>
@@ -2624,6 +2625,50 @@ function AdminPage() {
                 }}
               >
                 戻す
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* リセット確認モーダル */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[200]" onClick={() => setShowResetConfirm(false)}>
+          <div
+            className="bg-modal-bg rounded-[14px] p-6 max-w-[420px] w-[95%] border border-white/10"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="text-lg font-bold text-red-500 mb-3 flex items-center gap-2">
+              <span className="text-2xl">⚠️</span>
+              全データをリセットしますか？
+            </div>
+            <div className="text-[13px] text-gray-300 mb-2">
+              以下の全てのデータが<strong className="text-red-400">完全に削除</strong>されます：
+            </div>
+            <ul className="text-xs text-gray-400 mb-4 list-disc pl-5 space-y-1">
+              <li>登録選手データ（{players.length}名）</li>
+              <li>全試合結果（{completedMatches}/{totalMatches}試合）</li>
+              <li>カテゴリ設定・コート割当</li>
+              <li>団体戦チーム・試合データ</li>
+            </ul>
+            <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 mb-4">
+              この操作は取り消せません。大会途中の場合、全ての進行状況が失われます。
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-5 py-2 rounded-md bg-gray-600 text-white text-xs font-semibold cursor-pointer border-none"
+                onClick={() => setShowResetConfirm(false)}
+              >
+                キャンセル
+              </button>
+              <button
+                className="px-5 py-2 rounded-md bg-red-600 text-white text-xs font-semibold cursor-pointer border-none"
+                onClick={() => {
+                  reset();
+                  setShowResetConfirm(false);
+                }}
+              >
+                全データを削除する
               </button>
             </div>
           </div>

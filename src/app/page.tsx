@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, createContext, useContext } from 'react';
 import { useTournamentStore } from '@/store/tournament';
 import { saveToSupabase, loadFromSupabase, subscribeToChanges } from '@/lib/sync';
 import {
@@ -27,6 +27,7 @@ import type { Match, PhaseType, FinalRanking, LeagueStanding, Player, Tournament
 // ページ種別
 // ==========================================
 type PageType = 'admin' | 'referee' | 'monitor' | 'spectator';
+type RoleType = 'admin' | 'recorder' | 'viewer';
 
 // ==========================================
 // 共通UIコンポーネント
@@ -3485,8 +3486,9 @@ function SpectatorPage() {
 // ==========================================
 // メインコンポーネント
 // ==========================================
-export default function Home() {
-  const [page, setPage] = useState<PageType>('admin');
+function TournamentApp({ role = 'admin', defaultCourt }: { role?: RoleType; defaultCourt?: string }) {
+  const initialPage: PageType = role === 'viewer' ? 'spectator' : role === 'recorder' ? 'referee' : 'admin';
+  const [page, setPage] = useState<PageType>(initialPage);
   const [hydrated, setHydrated] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'connecting' | 'connected' | 'offline'>('connecting');
   const isRemoteUpdate = useRef(false);
@@ -3542,12 +3544,18 @@ export default function Home() {
     setHydrated(true);
   }, []);
 
-  const navItems: { key: PageType; label: string }[] = [
+  const allNavItems: { key: PageType; label: string }[] = [
     { key: 'admin', label: '管理' },
     { key: 'referee', label: '記録係' },
     { key: 'monitor', label: 'モニター' },
     { key: 'spectator', label: '観覧' },
   ];
+  // ロールに応じて表示するタブを制限
+  const navItems = role === 'viewer'
+    ? allNavItems.filter(i => i.key === 'spectator')
+    : role === 'recorder'
+    ? allNavItems.filter(i => i.key === 'referee')
+    : allNavItems;
 
   // Hydration待ち（localStorageからの復元完了まで）
   if (!hydrated) {
@@ -3570,7 +3578,7 @@ export default function Home() {
             日本拳法 孝徳会 大会運営システム
           </div>
           <div className="text-[10px] text-gray-500 mt-0.5">
-            Tournament Management System
+            {role === 'viewer' ? '観覧用ページ' : role === 'recorder' ? '記録係用ページ' : 'Tournament Management System'}
           </div>
           {/* 同期状態 */}
           <div className="flex items-center gap-1.5 mt-0.5">
@@ -3586,21 +3594,23 @@ export default function Home() {
             </span>
           </div>
         </div>
-        <nav className="flex gap-1 flex-wrap">
-          {navItems.map(item => (
-            <button
-              key={item.key}
-              onClick={() => setPage(item.key)}
-              className={`px-3.5 py-[7px] border-none rounded-md text-xs cursor-pointer ${
-                page === item.key
-                  ? 'bg-red-700 text-white font-bold'
-                  : 'bg-white/[0.06] text-gray-400 font-medium'
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </nav>
+        {navItems.length > 1 && (
+          <nav className="flex gap-1 flex-wrap">
+            {navItems.map(item => (
+              <button
+                key={item.key}
+                onClick={() => setPage(item.key)}
+                className={`px-3.5 py-[7px] border-none rounded-md text-xs cursor-pointer ${
+                  page === item.key
+                    ? 'bg-red-700 text-white font-bold'
+                    : 'bg-white/[0.06] text-gray-400 font-medium'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
+        )}
       </header>
 
       {/* メインコンテンツ */}
@@ -3612,4 +3622,12 @@ export default function Home() {
       </main>
     </div>
   );
+}
+
+// デフォルトエクスポート — URLパスでロールを判定
+export default function Home() {
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
+  const role: RoleType = pathname.startsWith('/viewer') ? 'viewer' : pathname.startsWith('/recorder') ? 'recorder' : 'admin';
+  return <TournamentApp role={role} />;
 }

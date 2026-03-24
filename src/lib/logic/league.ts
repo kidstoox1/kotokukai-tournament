@@ -112,9 +112,10 @@ export function calcStandings(group: Player[], matches: Match[]): LeagueStanding
     b.ipponFor += m.scoreB;
     b.ipponAgainst += m.scoreA;
 
-    // 累計警告数を記録（同率時の最終タイブレーカー用）
-    a.totalWarnings += m.warningsA;
-    b.totalWarnings += m.warningsB;
+    // 警告の残り数を記録（2回で1本に変換された分は消化済み）
+    // 例: 1試合で警告3 → 2消化(1本) + 残り1 / 3試合で各1 → 残り1+1+1=3
+    a.totalWarnings += m.warningsA % 2;
+    b.totalWarnings += m.warningsB % 2;
 
     if (m.resultType === RESULT.DRAW) {
       a.draws++;

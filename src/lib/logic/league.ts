@@ -94,11 +94,12 @@ export function createLeagueMatches(
   return matches;
 }
 
-// 順位計算（勝ち点降順 → 本数差降順）
+// 順位計算
+// 優先順位: 1.勝点 → 2.取った本数(多い方が上) → 3.取られた本数(少ない方が上) → 4.警告数(少ない方が上)
 export function calcStandings(group: Player[], matches: Match[]): LeagueStanding[] {
   const st: Record<string, LeagueStanding> = {};
   group.forEach(p => {
-    st[p.id] = { ...p, wins: 0, losses: 0, draws: 0, points: 0, ipponFor: 0, ipponAgainst: 0 };
+    st[p.id] = { ...p, wins: 0, losses: 0, draws: 0, points: 0, ipponFor: 0, ipponAgainst: 0, totalWarnings: 0 };
   });
 
   matches.filter(m => m.status === 'completed').forEach(m => {
@@ -110,6 +111,10 @@ export function calcStandings(group: Player[], matches: Match[]): LeagueStanding
     a.ipponAgainst += m.scoreB;
     b.ipponFor += m.scoreB;
     b.ipponAgainst += m.scoreA;
+
+    // 累計警告数を記録（同率時の最終タイブレーカー用）
+    a.totalWarnings += m.warningsA;
+    b.totalWarnings += m.warningsB;
 
     if (m.resultType === RESULT.DRAW) {
       a.draws++;
@@ -127,9 +132,11 @@ export function calcStandings(group: Player[], matches: Match[]): LeagueStanding
     }
   });
 
-  return Object.values(st).sort((a, b) =>
-    b.points !== a.points
-      ? b.points - a.points
-      : (b.ipponFor - b.ipponAgainst) - (a.ipponFor - a.ipponAgainst)
-  );
+  // ソート: 勝点 → 取った本数 → 取られた本数(少ない方が上) → 警告数(少ない方が上)
+  return Object.values(st).sort((a, b) => {
+    if (b.points !== a.points) return b.points - a.points;
+    if (b.ipponFor !== a.ipponFor) return b.ipponFor - a.ipponFor;
+    if (a.ipponAgainst !== b.ipponAgainst) return a.ipponAgainst - b.ipponAgainst;
+    return a.totalWarnings - b.totalWarnings;
+  });
 }

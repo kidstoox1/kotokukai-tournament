@@ -139,7 +139,9 @@ function StandingsTable({
             <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px] uppercase">勝</th>
             <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px] uppercase">敗</th>
             <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px] uppercase">分</th>
-            <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px] uppercase">本数</th>
+            <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px] uppercase">取本</th>
+            <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px] uppercase">失本</th>
+            <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px] uppercase">警告</th>
             <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px] uppercase">勝点</th>
           </tr>
         </thead>
@@ -155,14 +157,16 @@ function StandingsTable({
               <td className="p-2 border-b border-white/[0.04] text-center text-green-500">{s.wins}</td>
               <td className="p-2 border-b border-white/[0.04] text-center text-red-500">{s.losses}</td>
               <td className="p-2 border-b border-white/[0.04] text-center text-gray-300">{s.draws}</td>
-              <td className="p-2 border-b border-white/[0.04] text-center text-gray-300">{s.ipponFor}-{s.ipponAgainst}</td>
+              <td className="p-2 border-b border-white/[0.04] text-center text-blue-400">{s.ipponFor}</td>
+              <td className="p-2 border-b border-white/[0.04] text-center text-orange-400">{s.ipponAgainst}</td>
+              <td className="p-2 border-b border-white/[0.04] text-center text-yellow-500">{s.totalWarnings > 0 ? s.totalWarnings : '-'}</td>
               <td className="p-2 border-b border-white/[0.04] text-center font-bold text-amber-500">{s.points}</td>
             </tr>
           ))}
         </tbody>
       </table>
       <div className="text-[9px] text-gray-500 mt-1">
-        ※ 上位{advanceCount}名（緑表示）が次ステージ進出
+        ※ 上位{advanceCount}名（緑表示）が次ステージ進出　｜　順位決定: 勝点→取本→失本(少)→警告(少)
       </div>
     </div>
   );
@@ -2389,7 +2393,9 @@ function AdminPage() {
                         <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px]">勝</th>
                         <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px]">敗</th>
                         <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px]">分</th>
-                        <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px]">本数</th>
+                        <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px]">取本</th>
+                        <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px]">失本</th>
+                        <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px]">警告</th>
                         <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px]">勝点</th>
                       </tr>
                     </thead>
@@ -2399,7 +2405,11 @@ function AdminPage() {
                         return standings.map((s, i) => {
                           if (i > 0) {
                             const prev = standings[i - 1];
-                            if (!(s.points === prev.points && (s.ipponFor - s.ipponAgainst) === (prev.ipponFor - prev.ipponAgainst))) {
+                            const same = s.points === prev.points
+                              && s.ipponFor === prev.ipponFor
+                              && s.ipponAgainst === prev.ipponAgainst
+                              && s.totalWarnings === prev.totalWarnings;
+                            if (!same) {
                               currentRank = i + 1;
                             }
                           }
@@ -2414,7 +2424,9 @@ function AdminPage() {
                               <td className="p-2 border-b border-white/[0.04] text-center text-green-500">{s.wins}</td>
                               <td className="p-2 border-b border-white/[0.04] text-center text-red-500">{s.losses}</td>
                               <td className="p-2 border-b border-white/[0.04] text-center text-gray-300">{s.draws}</td>
-                              <td className="p-2 border-b border-white/[0.04] text-center text-gray-300">{s.ipponFor}-{s.ipponAgainst}</td>
+                              <td className="p-2 border-b border-white/[0.04] text-center text-blue-400">{s.ipponFor}</td>
+                              <td className="p-2 border-b border-white/[0.04] text-center text-orange-400">{s.ipponAgainst}</td>
+                              <td className="p-2 border-b border-white/[0.04] text-center text-yellow-500">{s.totalWarnings > 0 ? s.totalWarnings : '-'}</td>
                               <td className="p-2 border-b border-white/[0.04] text-center font-bold text-amber-500">{s.points}</td>
                             </tr>
                           );
@@ -3419,7 +3431,9 @@ function SpectatorPage() {
                       <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px]">勝</th>
                       <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px]">敗</th>
                       <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px]">分</th>
-                      <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px]">本数</th>
+                      <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px]">取本</th>
+                      <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px]">失本</th>
+                      <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px]">警告</th>
                       <th className="p-2 text-center border-b border-white/10 text-gray-400 font-semibold text-[10px]">勝点</th>
                     </tr>
                   </thead>
@@ -3429,7 +3443,8 @@ function SpectatorPage() {
                       return standings.map((s, i) => {
                         if (i > 0) {
                           const prev = standings[i - 1];
-                          if (!(s.points === prev.points && (s.ipponFor - s.ipponAgainst) === (prev.ipponFor - prev.ipponAgainst))) cr = i + 1;
+                          const same = s.points === prev.points && s.ipponFor === prev.ipponFor && s.ipponAgainst === prev.ipponAgainst && s.totalWarnings === prev.totalWarnings;
+                          if (!same) cr = i + 1;
                         }
                         const mc = medalColorsArr[cr - 1];
                         return (
@@ -3440,7 +3455,9 @@ function SpectatorPage() {
                             <td className="p-2 border-b border-white/[0.04] text-center text-green-500">{s.wins}</td>
                             <td className="p-2 border-b border-white/[0.04] text-center text-red-500">{s.losses}</td>
                             <td className="p-2 border-b border-white/[0.04] text-center text-gray-300">{s.draws}</td>
-                            <td className="p-2 border-b border-white/[0.04] text-center text-gray-300">{s.ipponFor}-{s.ipponAgainst}</td>
+                            <td className="p-2 border-b border-white/[0.04] text-center text-blue-400">{s.ipponFor}</td>
+                            <td className="p-2 border-b border-white/[0.04] text-center text-orange-400">{s.ipponAgainst}</td>
+                            <td className="p-2 border-b border-white/[0.04] text-center text-yellow-500">{s.totalWarnings > 0 ? s.totalWarnings : '-'}</td>
                             <td className="p-2 border-b border-white/[0.04] text-center font-bold text-amber-500">{s.points}</td>
                           </tr>
                         );

@@ -104,6 +104,7 @@ export interface LeagueStanding {
   points: number;
   ipponFor: number;
   ipponAgainst: number;
+  totalWarnings: number;  // 全試合の累計警告数（同率時の最終タイブレーカー）
 }
 
 // --- 最終順位 ---

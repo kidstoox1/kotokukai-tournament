@@ -52,9 +52,11 @@ export function getLeagueFinalRankings(players: Player[], matches: Match[]): Fin
   standings.forEach((s, i) => {
     if (i > 0) {
       const prev = standings[i - 1];
-      const samePoints = s.points === prev.points;
-      const sameIpponDiff = (s.ipponFor - s.ipponAgainst) === (prev.ipponFor - prev.ipponAgainst);
-      if (!(samePoints && sameIpponDiff)) {
+      const same = s.points === prev.points
+        && s.ipponFor === prev.ipponFor
+        && s.ipponAgainst === prev.ipponAgainst
+        && s.totalWarnings === prev.totalWarnings;
+      if (!same) {
         currentRank = i + 1;
       }
     }

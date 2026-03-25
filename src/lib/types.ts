@@ -6,7 +6,7 @@
 export interface Category {
   id: string;
   label: string;
-  group: '幼年' | '小学' | '中学' | '高校' | '一般';
+  group: '幼年' | '小学' | '中学' | '高校' | '一般' | 'カスタム';
   gender: 'male' | 'female' | 'mixed';
   menType: 'なし' | '少年面' | '大人面';
   session: 'am' | 'pm';

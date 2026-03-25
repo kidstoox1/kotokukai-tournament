@@ -1340,6 +1340,9 @@ const GRADE_GENDER_TO_CAT: Record<string, string> = {
   '中学3年_male': 'm3', '中学3年_female': 'm3',
   '高校生_male': 'hsm', '高校_male': 'hsm',
   '一般_female': 'wopen', '一般女子_female': 'wopen',
+  // カスタムカテゴリ（テスト用）
+  '低学年_male': 'junior', '低学年_female': 'junior', '低学年_mixed': 'junior',
+  '高学年_male': 'senior', '高学年_female': 'senior', '高学年_mixed': 'senior',
 };
 
 // 性別の正規化
@@ -1353,6 +1356,8 @@ function normalizeGender(raw: string): 'male' | 'female' {
 // 学年の正規化
 function normalizeGrade(raw: string): string {
   let s = raw.trim();
+  // カスタムカテゴリ名はそのまま返す
+  if (/^(低学年|高学年)$/.test(s)) return s;
   // 「小1」→「小学1年」など
   s = s.replace(/^小(\d)$/, '小学$1年');
   s = s.replace(/^中(\d)$/, '中学$1年');

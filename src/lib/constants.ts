@@ -28,6 +28,9 @@ export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'm3', label: '中学3年', group: '中学', gender: 'mixed', menType: '大人面', session: 'am', isTeam: false },
   { id: 'hsm', label: '高校生男子', group: '高校', gender: 'male', menType: '大人面', session: 'am', isTeam: false },
   { id: 'wopen', label: '一般女子', group: '一般', gender: 'female', menType: '大人面', session: 'am', isTeam: false },
+  // カスタムカテゴリ（テスト・柔軟運用向け）
+  { id: 'junior', label: '低学年（幼年〜小2）', group: 'カスタム', gender: 'mixed', menType: 'なし', session: 'am', isTeam: false },
+  { id: 'senior', label: '高学年（小3以上）', group: 'カスタム', gender: 'mixed', menType: 'なし', session: 'am', isTeam: false },
 ];
 
 // --- 会場（4コート） ---

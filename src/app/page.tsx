@@ -545,7 +545,7 @@ function MatchRecordModal({
                 {finalScoreB >= 1 && <span className="w-3 h-3 rounded-full inline-block border-2 border-white bg-white flex-shrink-0" />}
                 {finalScoreB >= 2 && <span className="w-3 h-3 rounded-full inline-block border-2 border-white bg-white flex-shrink-0" />}
                 <span>{match.playerB?.name}</span>
-                {(warningsB === 1 || warningsB === 3) && <span className="w-3 h-3 rounded-full inline-block flex-shrink-0" style={{ background: '#F59E0B' }} />}
+                {warningsB % 2 === 1 && <span className="w-3 h-3 rounded-full inline-block flex-shrink-0" style={{ background: '#F59E0B' }} />}
               </div>
               <div className="text-[10px] text-gray-400">{match.playerB?.dojo}</div>
               <div className="mt-2.5 mb-1 text-[10px] text-gray-400">取った本数</div>
@@ -567,7 +567,7 @@ function MatchRecordModal({
               </div>
               <div className="mt-2 mb-1 text-[10px] text-amber-500">白への警告</div>
               <div className="flex justify-center gap-1.5">
-                {[0, 1, 2, 3].map(n => (
+                {[0, 1, 2, 3, 4].map(n => (
                   <button
                     key={n}
                     onClick={() => setWarningsB(n)}
@@ -593,7 +593,7 @@ function MatchRecordModal({
                 {finalScoreA >= 1 && <span className="w-3 h-3 rounded-full inline-block flex-shrink-0" style={{ background: RED }} />}
                 {finalScoreA >= 2 && <span className="w-3 h-3 rounded-full inline-block flex-shrink-0" style={{ background: RED }} />}
                 <span>{match.playerA?.name}</span>
-                {(warningsA === 1 || warningsA === 3) && <span className="w-3 h-3 rounded-full inline-block flex-shrink-0" style={{ background: '#F59E0B' }} />}
+                {warningsA % 2 === 1 && <span className="w-3 h-3 rounded-full inline-block flex-shrink-0" style={{ background: '#F59E0B' }} />}
               </div>
               <div className="text-[10px] text-gray-400">{match.playerA?.dojo}</div>
               <div className="mt-2.5 mb-1 text-[10px] text-gray-400">取った本数</div>
@@ -615,7 +615,7 @@ function MatchRecordModal({
               </div>
               <div className="mt-2 mb-1 text-[10px] text-amber-500">赤への警告</div>
               <div className="flex justify-center gap-1.5">
-                {[0, 1, 2, 3].map(n => (
+                {[0, 1, 2, 3, 4].map(n => (
                   <button
                     key={n}
                     onClick={() => setWarningsA(n)}
@@ -3271,9 +3271,15 @@ function MonitorPage() {
                       : 'トーナメント'}
                   </div>
                   <div className="text-center">
-                    <span className="font-bold text-sm" style={{ color: RED }}><NameWithKana name={active.playerA?.name || ''} kana={active.playerA?.nameKana} size="sm" /></span>
+                    <div className="inline-block text-center mx-1">
+                      <span className="font-bold text-sm" style={{ color: RED }}><NameWithKana name={active.playerA?.name || ''} kana={active.playerA?.nameKana} size="sm" /></span>
+                      {active.playerA?.dojo && <div className="text-[9px] text-gray-400">{active.playerA.dojo}</div>}
+                    </div>
                     <span className="mx-2 text-gray-600 font-extrabold">VS</span>
-                    <span className="font-bold text-sm" style={{ color: WHITE_PLAYER }}><NameWithKana name={active.playerB?.name || ''} kana={active.playerB?.nameKana} size="sm" /></span>
+                    <div className="inline-block text-center mx-1">
+                      <span className="font-bold text-sm" style={{ color: WHITE_PLAYER }}><NameWithKana name={active.playerB?.name || ''} kana={active.playerB?.nameKana} size="sm" /></span>
+                      {active.playerB?.dojo && <div className="text-[9px] text-gray-400">{active.playerB.dojo}</div>}
+                    </div>
                   </div>
                 </div>
               ) : (

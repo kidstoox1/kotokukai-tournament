@@ -2884,6 +2884,7 @@ function RefereePage() {
     catPhases,
     tournamentData,
     activateMatch,
+    deactivateMatch,
     activateTeamMatch,
     submitMatchResult,
   } = useTournamentStore();
@@ -3089,6 +3090,21 @@ function RefereePage() {
               border: `1px solid ${m.isThirdPlace ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.05)'}`,
             }}
           >
+            <div className="min-w-[100px]">
+              <div className="text-[11px] font-semibold text-white">
+                {categories.find(c => c.id === m.categoryId)?.label}
+              </div>
+              <div className="text-[10px] font-bold" style={{ color: matchTypeColor(m) }}>
+                {m.isThirdPlace
+                  ? '3位決定戦'
+                  : m.type === 'league'
+                    ? `${String.fromCharCode(65 + (m.groupIndex || 0))}グループ`
+                    : matchTypeLabel(m, tournamentData)}
+              </div>
+            </div>
+            <span className="flex-1 text-center font-semibold text-white text-xs">
+              <NameWithKana name={m.playerB?.name || ''} kana={m.playerB?.nameKana} size="sm" /> vs <NameWithKana name={m.playerA?.name || ''} kana={m.playerA?.nameKana} size="sm" />
+            </span>
             {/* 上下入替ボタン */}
             <div className="flex flex-col gap-0.5 flex-shrink-0">
               <button
@@ -3108,21 +3124,6 @@ function RefereePage() {
                 ▼
               </button>
             </div>
-            <div className="min-w-[100px]">
-              <div className="text-[11px] font-semibold text-white">
-                {categories.find(c => c.id === m.categoryId)?.label}
-              </div>
-              <div className="text-[10px] font-bold" style={{ color: matchTypeColor(m) }}>
-                {m.isThirdPlace
-                  ? '3位決定戦'
-                  : m.type === 'league'
-                    ? `${String.fromCharCode(65 + (m.groupIndex || 0))}グループ`
-                    : matchTypeLabel(m, tournamentData)}
-              </div>
-            </div>
-            <span className="flex-1 text-center font-semibold text-white text-xs">
-              <NameWithKana name={m.playerB?.name || ''} kana={m.playerB?.nameKana} size="sm" /> vs <NameWithKana name={m.playerA?.name || ''} kana={m.playerA?.nameKana} size="sm" />
-            </span>
             <button
               className="px-2.5 py-[5px] rounded-md text-white text-[11px] font-semibold cursor-pointer border-none flex-shrink-0"
               style={{ background: activeMatch ? '#4B5563' : (venue?.color || '#B91C1C') }}
@@ -3267,7 +3268,12 @@ function RefereePage() {
       {recordingMatch && (
         <MatchRecordModal
           match={recordingMatch}
-          onClose={() => setRecordingMatch(null)}
+          onClose={() => {
+            if (recordingMatch.status === 'active') {
+              deactivateMatch(recordingMatch.id);
+            }
+            setRecordingMatch(null);
+          }}
           onSubmit={handleSubmitMatch}
         />
       )}

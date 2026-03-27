@@ -69,6 +69,7 @@ interface TournamentState {
   revertPhase: (catId: string) => void;
   submitMatchResult: (updatedMatch: Match) => void;
   activateMatch: (matchId: string) => void;
+  deactivateMatch: (matchId: string) => void;
   startFinals: (venueId: string) => void;
   setFinalsVenue: (venueId: string) => void;
 
@@ -546,6 +547,12 @@ export const useTournamentStore = create<TournamentState>()(
   activateMatch: (matchId) => {
     set(s => ({
       allMatches: s.allMatches.map(m => m.id === matchId ? { ...m, status: 'active' as const } : m),
+    }));
+  },
+
+  deactivateMatch: (matchId) => {
+    set(s => ({
+      allMatches: s.allMatches.map(m => m.id === matchId ? { ...m, status: 'pending' as const } : m),
     }));
   },
 

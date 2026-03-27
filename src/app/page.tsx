@@ -2891,6 +2891,7 @@ function RefereePage() {
   const [refereeVenue, setRefereeVenue] = useState('A');
   const [recordingMatch, setRecordingMatch] = useState<Match | null>(null);
   const [recordingTeamMatchId, setRecordingTeamMatchId] = useState<string | null>(null);
+  const autoOpenMatchId = useRef<string | null>(null);
 
   const vCats = Object.entries(venueAssignments)
     .filter(([, v]) => v === refereeVenue)
@@ -2918,6 +2919,14 @@ function RefereePage() {
     submitMatchResult(m);
     setRecordingMatch(null);
   }, [submitMatchResult]);
+
+  // 試合開始ボタンからactivateした後、自動でスコア入力画面を開く
+  useEffect(() => {
+    if (autoOpenMatchId.current && activeMatch && activeMatch.id === autoOpenMatchId.current) {
+      setRecordingMatch(activeMatch);
+      autoOpenMatchId.current = null;
+    }
+  }, [activeMatch]);
 
   return (
     <div>
@@ -3029,12 +3038,8 @@ function RefereePage() {
               className="mt-4 px-10 py-3 rounded-md text-white text-[15px] font-semibold cursor-pointer border-none"
               style={{ background: venue?.color || '#B91C1C' }}
               onClick={() => {
+                autoOpenMatchId.current = pendingMatches[0].id;
                 activateMatch(pendingMatches[0].id);
-                // activate後にstateが更新されるのを待ってからrecording開始
-                setTimeout(() => {
-                  const updated = useTournamentStore.getState().allMatches.find(m => m.id === pendingMatches[0].id);
-                  if (updated) setRecordingMatch(updated);
-                }, 50);
               }}
             >
               試合開始
@@ -3078,11 +3083,8 @@ function RefereePage() {
               className="px-2.5 py-[5px] rounded-md text-white text-[11px] font-semibold cursor-pointer border-none flex-shrink-0"
               style={{ background: activeMatch ? '#4B5563' : (venue?.color || '#B91C1C') }}
               onClick={() => {
+                autoOpenMatchId.current = m.id;
                 activateMatch(m.id);
-                setTimeout(() => {
-                  const updated = useTournamentStore.getState().allMatches.find(mt => mt.id === m.id);
-                  if (updated) setRecordingMatch(updated);
-                }, 50);
               }}
             >
               {activeMatch ? '入替' : '開始'}

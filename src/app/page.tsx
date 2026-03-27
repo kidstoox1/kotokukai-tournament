@@ -2991,22 +2991,51 @@ function RefereePage() {
               試合結果を入力
             </button>
           </div>
+        ) : pendingMatches.length > 0 ? (
+          <div className="text-center py-4">
+            {/* 次の試合の選手を直接表示 */}
+            <div className="inline-block px-5 py-1.5 rounded-lg mb-3 bg-white/[0.06] border border-white/10">
+              <div className="text-base font-extrabold text-white">
+                {categories.find(c => c.id === pendingMatches[0].categoryId)?.label}
+              </div>
+              <div className="text-sm font-bold mt-0.5" style={{ color: matchTypeColor(pendingMatches[0]) }}>
+                {pendingMatches[0].isThirdPlace
+                  ? '3位決定戦'
+                  : pendingMatches[0].type === 'league'
+                    ? `リーグ戦 ${String.fromCharCode(65 + (pendingMatches[0].groupIndex || 0))}グループ`
+                    : matchTypeLabel(pendingMatches[0], tournamentData)}
+              </div>
+            </div>
+            <div className="flex items-center justify-center gap-4">
+              <div
+                className="flex-1 max-w-[200px] py-4 px-3 rounded-[10px] text-center"
+                style={{ border: `2px solid ${WHITE_BORDER}`, background: WHITE_BG }}
+              >
+                <div className="text-[10px] font-bold mb-1" style={{ color: WHITE_PLAYER }}>白</div>
+                <div className="text-lg font-bold text-white"><NameWithKana name={pendingMatches[0].playerB?.name || ''} kana={pendingMatches[0].playerB?.nameKana} size="lg" /></div>
+                <div className="text-[10px] text-gray-400 mt-0.5">{pendingMatches[0].playerB?.dojo}</div>
+              </div>
+              <div className="text-[22px] font-extrabold text-gray-600">VS</div>
+              <div
+                className="flex-1 max-w-[200px] py-4 px-3 rounded-[10px] text-center"
+                style={{ border: `2px solid ${RED}40`, background: `${RED}08` }}
+              >
+                <div className="text-[10px] font-bold mb-1" style={{ color: RED }}>赤</div>
+                <div className="text-lg font-bold text-white"><NameWithKana name={pendingMatches[0].playerA?.name || ''} kana={pendingMatches[0].playerA?.nameKana} size="lg" /></div>
+                <div className="text-[10px] text-gray-400 mt-0.5">{pendingMatches[0].playerA?.dojo}</div>
+              </div>
+            </div>
+            <button
+              className="mt-4 px-10 py-3 rounded-md text-white text-[15px] font-semibold cursor-pointer border-none"
+              style={{ background: venue?.color || '#B91C1C' }}
+              onClick={() => activateMatch(pendingMatches[0].id)}
+            >
+              試合開始
+            </button>
+          </div>
         ) : (
           <div className="text-center py-[30px] text-gray-500">
-            {pendingMatches.length > 0 ? (
-              <>
-                <div className="mb-2.5">次の試合を開始してください</div>
-                <button
-                  className="px-3.5 py-[7px] rounded-md text-white text-xs font-semibold cursor-pointer border-none"
-                  style={{ background: venue?.color || '#B91C1C' }}
-                  onClick={() => activateMatch(pendingMatches[0].id)}
-                >
-                  次の試合を開始
-                </button>
-              </>
-            ) : (
-              'このコートの試合は全て完了、または未割当です'
-            )}
+            このコートの試合は全て完了、または未割当です
           </div>
         )}
       </div>
@@ -3038,14 +3067,13 @@ function RefereePage() {
             <span className="flex-1 text-center font-semibold text-white text-xs">
               <NameWithKana name={m.playerB?.name || ''} kana={m.playerB?.nameKana} size="sm" /> vs <NameWithKana name={m.playerA?.name || ''} kana={m.playerA?.nameKana} size="sm" />
             </span>
-            {!activeMatch && (
-              <button
-                className="px-2.5 py-[5px] rounded-md bg-gray-600 text-white text-[11px] font-semibold cursor-pointer border-none"
-                onClick={() => activateMatch(m.id)}
-              >
-                開始
-              </button>
-            )}
+            <button
+              className="px-2.5 py-[5px] rounded-md text-white text-[11px] font-semibold cursor-pointer border-none flex-shrink-0"
+              style={{ background: activeMatch ? '#4B5563' : (venue?.color || '#B91C1C') }}
+              onClick={() => activateMatch(m.id)}
+            >
+              {activeMatch ? '入替' : '開始'}
+            </button>
           </div>
         ))}
         {pendingMatches.length === 0 && <div className="text-gray-500 text-xs">待機中の試合なし</div>}

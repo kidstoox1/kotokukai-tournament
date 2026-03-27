@@ -2892,6 +2892,8 @@ function RefereePage() {
   const [recordingMatch, setRecordingMatch] = useState<Match | null>(null);
   const [recordingTeamMatchId, setRecordingTeamMatchId] = useState<string | null>(null);
   const autoOpenMatchId = useRef<string | null>(null);
+  // 試合順序のカスタム並べ替え（コートごと）
+  const [matchOrderMap, setMatchOrderMap] = useState<Record<string, string[]>>({});
 
   const vCats = Object.entries(venueAssignments)
     .filter(([, v]) => v === refereeVenue)
@@ -2904,7 +2906,7 @@ function RefereePage() {
     )
   );
   const activeMatch = vMatches.find(m => m.status === 'active');
-  const pendingMatches = vMatches
+  const pendingMatchesDefault = vMatches
     .filter(m => m.status === 'pending' && m.playerA && m.playerB)
     // 決勝待ち状態の決勝戦は通常キューから除外（管理画面から開始する）
     .filter(m => !(catPhases[m.categoryId] === PHASE_TYPES.AWAITING_FINALS && isFinalMatch(m, tournamentData) && !m.venueId))
@@ -2913,7 +2915,30 @@ function RefereePage() {
       if (!a.isThirdPlace && b.isThirdPlace) return 1;
       return (a.round || 0) - (b.round || 0);
     });
+  // カスタム順序が設定されている場合はそれに従う
+  const customOrder = matchOrderMap[refereeVenue];
+  const pendingMatches = customOrder
+    ? [...pendingMatchesDefault].sort((a, b) => {
+        const idxA = customOrder.indexOf(a.id);
+        const idxB = customOrder.indexOf(b.id);
+        if (idxA === -1 && idxB === -1) return 0;
+        if (idxA === -1) return 1;
+        if (idxB === -1) return 1;
+        return idxA - idxB;
+      })
+    : pendingMatchesDefault;
   const venue = VENUES.find(v => v.id === refereeVenue);
+
+  const moveMatch = useCallback((matchId: string, direction: 'up' | 'down') => {
+    const ids = pendingMatches.map(m => m.id);
+    const idx = ids.indexOf(matchId);
+    if (idx === -1) return;
+    const newIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (newIdx < 0 || newIdx >= ids.length) return;
+    const newIds = [...ids];
+    [newIds[idx], newIds[newIdx]] = [newIds[newIdx], newIds[idx]];
+    setMatchOrderMap(prev => ({ ...prev, [refereeVenue]: newIds }));
+  }, [pendingMatches, refereeVenue]);
 
   const handleSubmitMatch = useCallback((m: Match) => {
     submitMatchResult(m);
@@ -3055,7 +3080,7 @@ function RefereePage() {
       {/* 待機中の試合 */}
       <div className="bg-white/[0.03] border border-white/[0.07] rounded-[10px] p-4 mb-3">
         <div className="text-sm font-bold text-white mb-3">次の試合予定（{pendingMatches.length}試合）</div>
-        {pendingMatches.slice(0, 8).map(m => (
+        {pendingMatches.slice(0, 8).map((m, idx) => (
           <div
             key={m.id}
             className="flex items-center gap-2 px-2.5 py-2 mb-1 rounded-md"
@@ -3064,7 +3089,26 @@ function RefereePage() {
               border: `1px solid ${m.isThirdPlace ? 'rgba(245,158,11,0.12)' : 'rgba(255,255,255,0.05)'}`,
             }}
           >
-            <div className="min-w-[120px]">
+            {/* 上下入替ボタン */}
+            <div className="flex flex-col gap-0.5 flex-shrink-0">
+              <button
+                className="w-6 h-5 rounded text-[10px] font-bold cursor-pointer border-none flex items-center justify-center"
+                style={{ background: idx > 0 ? 'rgba(255,255,255,0.08)' : 'transparent', color: idx > 0 ? '#D6DCE8' : '#374151' }}
+                onClick={() => moveMatch(m.id, 'up')}
+                disabled={idx === 0}
+              >
+                ▲
+              </button>
+              <button
+                className="w-6 h-5 rounded text-[10px] font-bold cursor-pointer border-none flex items-center justify-center"
+                style={{ background: idx < pendingMatches.length - 1 ? 'rgba(255,255,255,0.08)' : 'transparent', color: idx < pendingMatches.length - 1 ? '#D6DCE8' : '#374151' }}
+                onClick={() => moveMatch(m.id, 'down')}
+                disabled={idx >= pendingMatches.length - 1}
+              >
+                ▼
+              </button>
+            </div>
+            <div className="min-w-[100px]">
               <div className="text-[11px] font-semibold text-white">
                 {categories.find(c => c.id === m.categoryId)?.label}
               </div>

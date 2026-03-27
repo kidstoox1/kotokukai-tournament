@@ -703,7 +703,7 @@ function MatchRecordModal({
             className="px-6 py-2.5 rounded-md bg-green-600 text-white text-xs font-semibold cursor-pointer border-none"
             onClick={handleSubmit}
           >
-            {isEdit ? '修正を確定' : 'この結果で確定'}
+            {isEdit ? '修正を確定' : '試合終了・結果確定'}
           </button>
         </div>
       </div>
@@ -2988,7 +2988,7 @@ function RefereePage() {
               className="mt-4 px-10 py-3 rounded-md bg-green-600 text-white text-[15px] font-semibold cursor-pointer border-none"
               onClick={() => setRecordingMatch(activeMatch)}
             >
-              試合結果を入力
+              記録・結果入力
             </button>
           </div>
         ) : pendingMatches.length > 0 ? (
@@ -3028,7 +3028,14 @@ function RefereePage() {
             <button
               className="mt-4 px-10 py-3 rounded-md text-white text-[15px] font-semibold cursor-pointer border-none"
               style={{ background: venue?.color || '#B91C1C' }}
-              onClick={() => activateMatch(pendingMatches[0].id)}
+              onClick={() => {
+                activateMatch(pendingMatches[0].id);
+                // activate後にstateが更新されるのを待ってからrecording開始
+                setTimeout(() => {
+                  const updated = useTournamentStore.getState().allMatches.find(m => m.id === pendingMatches[0].id);
+                  if (updated) setRecordingMatch(updated);
+                }, 50);
+              }}
             >
               試合開始
             </button>
@@ -3070,7 +3077,13 @@ function RefereePage() {
             <button
               className="px-2.5 py-[5px] rounded-md text-white text-[11px] font-semibold cursor-pointer border-none flex-shrink-0"
               style={{ background: activeMatch ? '#4B5563' : (venue?.color || '#B91C1C') }}
-              onClick={() => activateMatch(m.id)}
+              onClick={() => {
+                activateMatch(m.id);
+                setTimeout(() => {
+                  const updated = useTournamentStore.getState().allMatches.find(mt => mt.id === m.id);
+                  if (updated) setRecordingMatch(updated);
+                }, 50);
+              }}
             >
               {activeMatch ? '入替' : '開始'}
             </button>

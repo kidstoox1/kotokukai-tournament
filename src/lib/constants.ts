@@ -82,10 +82,12 @@ export const START_FORMATS: StartFormat[] = [
 ];
 
 // --- 次フェーズ選択肢 ---
+// 先頭の選択肢がデフォルト選択になる（決勝トーナメントをデフォルトに、
+// リーグ決勝は明示的に選択する運用）
 export const NEXT_PHASE_OPTIONS: Record<string, NextPhaseOption[]> = {
   league: [
-    { value: 'league_final', label: 'リーグ決勝に進む（総当たりで順位確定）' },
     { value: 'final_tournament', label: '決勝トーナメントに進む' },
+    { value: 'league_final', label: 'リーグ決勝に進む（総当たりで順位確定）' },
   ],
   pre_tournament: [
     { value: 'final_tournament', label: '決勝トーナメントに進む' },

@@ -59,39 +59,107 @@ export function createLeagueGroups(players: Player[], groupSize: number = 4): Pl
   return groups;
 }
 
-// 総当たり試合生成
+/**
+ * ラウンドロビン（総当たり）の試合順を生成
+ * サーキル法 (circle method) を使い、各ラウンドで各選手が最大1試合になるよう
+ * ペアを組む。これによりラウンド内では連続試合が発生せず、選手の休憩が挟まる。
+ *
+ * 奇数人数の場合は仮想の BYE を追加してラウンド数を揃え、BYE とのペアはスキップ。
+ * 3人など少人数では構造上どうしても連続試合が発生するが、それ以外は基本的に
+ * 同じ選手が連続して試合することを避けられる。
+ *
+ * 返り値: ラウンドごとのペア配列（[[[i,j],...], [[i,j],...], ...]）
+ */
+function generateRoundRobinRounds(n: number): [number, number][][] {
+  if (n < 2) return [];
+  const hasBye = n % 2 === 1;
+  const total = hasBye ? n + 1 : n;
+  const byeIdx = total - 1;           // 奇数時の BYE インデックス
+  const numRounds = total - 1;
+  const half = total / 2;
+
+  // 先頭を固定、残りを回転させるサーキル法
+  const rotating = Array.from({ length: total - 1 }, (_, i) => i + 1);
+  const rounds: [number, number][][] = [];
+
+  for (let r = 0; r < numRounds; r++) {
+    const top = [0, ...rotating.slice(0, half - 1)];
+    const bottom = rotating.slice(half - 1).reverse();
+    const round: [number, number][] = [];
+    for (let i = 0; i < half; i++) {
+      const a = top[i];
+      const b = bottom[i];
+      // BYE とのペアはスキップ（奇数時）
+      if (hasBye && (a === byeIdx || b === byeIdx)) continue;
+      round.push([a, b]);
+    }
+    rounds.push(round);
+    // 回転: 最後を先頭へ
+    rotating.unshift(rotating.pop()!);
+  }
+
+  return rounds;
+}
+
+/**
+ * ラウンド配列を1次元化し、ラウンド境界での連続試合を貪欲に最小化する。
+ * 各ラウンドの内部ペア同士は常に分離しているため、各ラウンド r (r>=1) について
+ * 「前ラウンド最後のペアと重なりが最小のペア」を先頭に並び替える。
+ */
+function flattenRoundsMinimizingConsecutives(
+  rounds: [number, number][][]
+): [number, number][] {
+  const result: [number, number][] = [];
+  for (let r = 0; r < rounds.length; r++) {
+    const round = [...rounds[r]];
+    if (result.length === 0) {
+      result.push(...round);
+      continue;
+    }
+    const last = new Set<number>(result[result.length - 1]);
+    round.sort((a, b) => {
+      const oA = a.filter(p => last.has(p)).length;
+      const oB = b.filter(p => last.has(p)).length;
+      return oA - oB;
+    });
+    result.push(...round);
+  }
+  return result;
+}
+
+// 総当たり試合生成（連続試合を避けるラウンドロビン順）
 export function createLeagueMatches(
   group: Player[],
   groupIndex: number,
   categoryId: string,
   phaseKey: PhaseType
 ): Match[] {
-  const matches: Match[] = [];
-  for (let i = 0; i < group.length; i++) {
-    for (let j = i + 1; j < group.length; j++) {
-      matches.push({
-        id: generateId(),
-        categoryId,
-        groupIndex,
-        type: 'league',
-        phaseKey,
-        playerA: { id: group[i].id, name: group[i].name, nameKana: group[i].nameKana, dojo: group[i].dojo },
-        playerB: { id: group[j].id, name: group[j].name, nameKana: group[j].nameKana, dojo: group[j].dojo },
-        scoreA: 0,
-        scoreB: 0,
-        warningsA: 0,
-        warningsB: 0,
-        resultType: null,
-        winnerId: null,
-        winnerName: null,
-        status: 'pending',
-        venueId: null,
-        isBye: false,
-        isThirdPlace: false,
-      });
-    }
-  }
-  return matches;
+  if (group.length < 2) return [];
+
+  // ラウンドロビンのペア順を生成し、境界での連続を最小化するよう並べる
+  const rounds = generateRoundRobinRounds(group.length);
+  const pairs: [number, number][] = flattenRoundsMinimizingConsecutives(rounds);
+
+  return pairs.map(([i, j]) => ({
+    id: generateId(),
+    categoryId,
+    groupIndex,
+    type: 'league',
+    phaseKey,
+    playerA: { id: group[i].id, name: group[i].name, nameKana: group[i].nameKana, dojo: group[i].dojo },
+    playerB: { id: group[j].id, name: group[j].name, nameKana: group[j].nameKana, dojo: group[j].dojo },
+    scoreA: 0,
+    scoreB: 0,
+    warningsA: 0,
+    warningsB: 0,
+    resultType: null,
+    winnerId: null,
+    winnerName: null,
+    status: 'pending',
+    venueId: null,
+    isBye: false,
+    isThirdPlace: false,
+  }));
 }
 
 // 順位計算

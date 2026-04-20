@@ -3462,6 +3462,12 @@ function RefereePage() {
   const [matchOrderMap, setMatchOrderMap] = useState<Record<string, string[]>>({});
   // サイドパネル（総当たり表・試合順リスト）の表示制御
   const [showSchedulePanel, setShowSchedulePanel] = useState(true);
+  // グループ/カテゴリ終了時のポップアップ通知
+  const [groupCompletionNotice, setGroupCompletionNotice] = useState<{
+    completedLabel: string;
+    nextLabel: string | null;
+    venueColor: string;
+  } | null>(null);
 
   const vCats = Object.entries(venueAssignments)
     .filter(([, v]) => v === refereeVenue)
@@ -3509,9 +3515,111 @@ function RefereePage() {
   }, [pendingMatches, refereeVenue]);
 
   const handleSubmitMatch = useCallback((m: Match) => {
+    // 修正(既に完了済みの試合の再編集)ではなく、新規完了かどうかを判定
+    const beforeStatus = useTournamentStore.getState().allMatches.find(x => x.id === m.id)?.status;
+    const isNewCompletion = beforeStatus !== 'completed' && m.status === 'completed';
+
     submitMatchResult(m);
     setRecordingMatch(null);
-  }, [submitMatchResult]);
+
+    if (!isNewCompletion) return;
+
+    // 送信後の最新状態で「グループ/段 終了」を判定
+    const after = useTournamentStore.getState();
+    const afterCats = Object.entries(after.venueAssignments)
+      .filter(([, vid]) => vid === refereeVenue)
+      .map(([c]) => c);
+    const afterVMatches = after.allMatches.filter(x =>
+      !x.isBye && (
+        afterCats.includes(x.categoryId) ||
+        (x.venueId === refereeVenue && after.catPhases[x.categoryId] === PHASE_TYPES.AWAITING_FINALS && isFinalMatch(x, after.tournamentData))
+      )
+    );
+
+    // 直前に終えた単位のラベル
+    let completedLabel: string | null = null;
+    const cat = after.categories.find(c => c.id === m.categoryId);
+    const catLabel = cat?.label || '';
+
+    if (m.type === 'league') {
+      const sameGroup = after.allMatches.filter(x =>
+        x.categoryId === m.categoryId &&
+        x.type === 'league' &&
+        x.phaseKey === m.phaseKey &&
+        (x.groupIndex ?? 0) === (m.groupIndex ?? 0)
+      );
+      const allDone = sameGroup.every(x => x.status === 'completed' || x.isBye);
+      if (!allDone) return;
+      if (m.phaseKey === PHASE_TYPES.LEAGUE_FINAL) {
+        completedLabel = `${catLabel} リーグ決勝`;
+      } else {
+        completedLabel = `${catLabel} ${String.fromCharCode(65 + (m.groupIndex ?? 0))}グループ`;
+      }
+    } else if (m.type === 'tournament') {
+      const sameRound = after.allMatches.filter(x =>
+        x.categoryId === m.categoryId &&
+        x.type === 'tournament' &&
+        x.phaseKey === m.phaseKey &&
+        (x.round ?? 0) === (m.round ?? 0) &&
+        (x.isThirdPlace ?? false) === (m.isThirdPlace ?? false)
+      );
+      const allDone = sameRound.every(x => x.status === 'completed' || x.isBye);
+      if (!allDone) return;
+      if (m.isThirdPlace) {
+        completedLabel = `${catLabel} 3位決定戦`;
+      } else {
+        completedLabel = `${catLabel} ${matchTypeLabel(m, after.tournamentData)}`;
+      }
+    } else {
+      return;
+    }
+
+    // 次の試合(=次のグループ/段)を探す
+    const afterPending = afterVMatches
+      .filter(x => x.status === 'pending' && x.playerA && x.playerB)
+      .filter(x => !(after.catPhases[x.categoryId] === PHASE_TYPES.AWAITING_FINALS && isFinalMatch(x, after.tournamentData) && !x.venueId))
+      .sort((a, b) => {
+        if (a.isThirdPlace && !b.isThirdPlace) return -1;
+        if (!a.isThirdPlace && b.isThirdPlace) return 1;
+        return (a.round || 0) - (b.round || 0);
+      });
+    const customOrder2 = matchOrderMap[refereeVenue];
+    const sortedPending = customOrder2
+      ? [...afterPending].sort((a, b) => {
+          const idxA = customOrder2.indexOf(a.id);
+          const idxB = customOrder2.indexOf(b.id);
+          if (idxA === -1 && idxB === -1) return 0;
+          if (idxA === -1) return 1;
+          if (idxB === -1) return -1;
+          return idxA - idxB;
+        })
+      : afterPending;
+    const next = sortedPending[0];
+
+    let nextLabel: string | null = null;
+    if (next) {
+      const nCat = after.categories.find(c => c.id === next.categoryId);
+      const nCatLabel = nCat?.label || '';
+      if (next.type === 'league') {
+        if (next.phaseKey === PHASE_TYPES.LEAGUE_FINAL) {
+          nextLabel = `${nCatLabel} リーグ決勝`;
+        } else {
+          nextLabel = `${nCatLabel} ${String.fromCharCode(65 + (next.groupIndex ?? 0))}グループ`;
+        }
+      } else if (next.isThirdPlace) {
+        nextLabel = `${nCatLabel} 3位決定戦`;
+      } else {
+        nextLabel = `${nCatLabel} ${matchTypeLabel(next, after.tournamentData)}`;
+      }
+    }
+
+    const v = VENUES.find(vv => vv.id === refereeVenue);
+    setGroupCompletionNotice({
+      completedLabel,
+      nextLabel,
+      venueColor: v?.color || '#B91C1C',
+    });
+  }, [submitMatchResult, refereeVenue, matchOrderMap]);
 
   // 試合開始ボタンからactivateした後、自動でスコア入力画面を開く
   useEffect(() => {
@@ -3971,6 +4079,62 @@ function RefereePage() {
           matchId={recordingTeamMatchId}
           onClose={() => setRecordingTeamMatchId(null)}
         />
+      )}
+
+      {/* グループ/段 終了ポップアップ通知 */}
+      {groupCompletionNotice && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.7)' }}
+          onClick={() => setGroupCompletionNotice(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl p-6 text-center"
+            style={{
+              background: '#1F2937',
+              border: `2px solid ${groupCompletionNotice.venueColor}`,
+              boxShadow: `0 0 40px ${groupCompletionNotice.venueColor}60`,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-5xl mb-3">🎉</div>
+            <div className="text-xs font-semibold mb-1" style={{ color: groupCompletionNotice.venueColor }}>
+              試合終了のお知らせ
+            </div>
+            <div className="text-xl font-extrabold text-white mb-4 leading-tight">
+              {groupCompletionNotice.completedLabel}
+              <br />
+              <span className="text-base text-gray-300 font-semibold">が終了しました</span>
+            </div>
+            {groupCompletionNotice.nextLabel ? (
+              <div
+                className="rounded-lg p-3 mb-5"
+                style={{
+                  background: `${groupCompletionNotice.venueColor}18`,
+                  border: `1px solid ${groupCompletionNotice.venueColor}40`,
+                }}
+              >
+                <div className="text-[11px] text-gray-400 mb-1">次の試合</div>
+                <div className="text-lg font-bold" style={{ color: groupCompletionNotice.venueColor }}>
+                  {groupCompletionNotice.nextLabel}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-lg p-3 mb-5 bg-white/[0.04] border border-white/10">
+                <div className="text-sm text-gray-300 font-semibold">
+                  このコートの試合は全て終了しました
+                </div>
+              </div>
+            )}
+            <button
+              onClick={() => setGroupCompletionNotice(null)}
+              className="w-full px-6 py-3 rounded-lg text-white text-base font-bold cursor-pointer border-none"
+              style={{ background: groupCompletionNotice.venueColor }}
+            >
+              OK
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

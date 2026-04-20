@@ -192,6 +192,278 @@ function StandingsTable({
 }
 
 // ==========================================
+// リーグ戦の対戦表（NxN マトリクス）
+// 行 × 列 = 選手同士の対戦。行の選手視点で表示。
+// - 完了: 勝/負/分 + 本数（その行の選手視点）
+// - 進行中: 赤背景「進行中」
+// - 未実施: #試合番号
+// - 対角線: —
+// ==========================================
+function LeagueMatrix({
+  group,
+  matches,
+  title,
+  highlightPlayerId,
+}: {
+  group: Player[];
+  matches: Match[];
+  title?: string;
+  highlightPlayerId?: string | null;
+}) {
+  if (group.length < 2 || matches.length === 0) return null;
+
+  // プレイヤーID → グループ内インデックス
+  const idToIdx: Record<string, number> = {};
+  group.forEach((p, i) => { idToIdx[p.id] = i; });
+
+  // 試合番号付きで (i,j) にマッピング
+  type Cell = { match: Match; matchNo: number };
+  const cells: (Cell | null)[][] = Array.from({ length: group.length }, () =>
+    Array(group.length).fill(null)
+  );
+  matches.forEach((m, idx) => {
+    const aId = m.playerA?.id;
+    const bId = m.playerB?.id;
+    if (!aId || !bId) return;
+    const i = idToIdx[aId];
+    const j = idToIdx[bId];
+    if (i === undefined || j === undefined) return;
+    const c: Cell = { match: m, matchNo: idx + 1 };
+    cells[i][j] = c;
+    cells[j][i] = c;
+  });
+
+  const shortName = (name: string) => {
+    // 全角/半角空白を除去して短縮表示に（長い名前はテーブルを崩す）
+    return name.replace(/[\s　]+/g, '');
+  };
+
+  return (
+    <div className="mb-3">
+      {title && <div className="text-[11px] font-bold text-gray-400 mb-1.5">{title}</div>}
+      <div className="overflow-x-auto">
+        <table className="border-collapse text-[10px]">
+          <thead>
+            <tr>
+              <th className="p-1 border border-white/10 bg-white/[0.04] min-w-[70px]"></th>
+              {group.map(p => {
+                const isHL = highlightPlayerId === p.id;
+                return (
+                  <th
+                    key={p.id}
+                    className="p-1 border border-white/10 font-semibold text-[9px] min-w-[56px] max-w-[80px]"
+                    style={{
+                      background: isHL ? 'rgba(185,28,28,0.15)' : 'rgba(255,255,255,0.04)',
+                      color: isHL ? '#FCA5A5' : '#D1D5DB',
+                    }}
+                  >
+                    <div className="truncate">{shortName(p.name)}</div>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {group.map((rp, i) => {
+              const rowHL = highlightPlayerId === rp.id;
+              return (
+                <tr key={rp.id}>
+                  <th
+                    className="p-1 border border-white/10 font-semibold text-[9px] text-left min-w-[70px] max-w-[90px]"
+                    style={{
+                      background: rowHL ? 'rgba(185,28,28,0.15)' : 'rgba(255,255,255,0.04)',
+                      color: rowHL ? '#FCA5A5' : '#D1D5DB',
+                    }}
+                  >
+                    <div className="truncate">{shortName(rp.name)}</div>
+                  </th>
+                  {group.map((_cp, j) => {
+                    if (i === j) {
+                      return (
+                        <td
+                          key={j}
+                          className="p-1 border border-white/10 text-center text-gray-600"
+                          style={{ background: 'rgba(255,255,255,0.02)' }}
+                        >
+                          —
+                        </td>
+                      );
+                    }
+                    const cell = cells[i][j];
+                    if (!cell) {
+                      return <td key={j} className="p-1 border border-white/10"></td>;
+                    }
+                    const m = cell.match;
+                    const isCompleted = m.status === 'completed';
+                    const isActive = m.status === 'active';
+                    const rowIsA = m.playerA?.id === rp.id;
+                    const myScore = rowIsA ? m.scoreA : m.scoreB;
+                    const oppScore = rowIsA ? m.scoreB : m.scoreA;
+                    const won = isCompleted && m.winnerId === rp.id;
+                    const lost = isCompleted && m.winnerId && m.winnerId !== rp.id;
+                    const drew = isCompleted && !m.winnerId && !m.overtime;
+                    return (
+                      <td
+                        key={j}
+                        className="p-1 border border-white/10 text-center"
+                        style={{
+                          background: isActive
+                            ? 'rgba(239,68,68,0.18)'
+                            : won ? 'rgba(34,197,94,0.1)'
+                            : lost ? 'rgba(239,68,68,0.06)'
+                            : drew ? 'rgba(245,158,11,0.08)'
+                            : 'rgba(255,255,255,0.02)',
+                        }}
+                      >
+                        {isCompleted ? (
+                          <div className="leading-tight">
+                            <div
+                              className="text-[9px] font-bold"
+                              style={{ color: won ? '#22C55E' : lost ? '#EF4444' : '#F59E0B' }}
+                            >
+                              {won ? '勝' : lost ? '負' : '分'}
+                            </div>
+                            <div className="text-[10px] font-bold text-white">
+                              {myScore}-{oppScore}
+                              {m.overtime && <span className="text-amber-400 text-[8px]">*</span>}
+                            </div>
+                          </div>
+                        ) : isActive ? (
+                          <div className="text-[9px] font-bold text-red-400 animate-pulse">進行中</div>
+                        ) : (
+                          <div className="text-[9px] text-gray-400">#{cell.matchNo}</div>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="text-[9px] text-gray-500 mt-1">
+        ※ 行の選手視点で勝/負/分と本数を表示　｜　#番号 = 対戦順　｜　* = 延長戦あり
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
+// 試合予定リスト（試合順 + ステータス）
+// 「自分の注目する選手がどのタイミングで試合に出るか」を把握するための簡易ビュー。
+// ==========================================
+function MatchScheduleList({
+  matches,
+  categoriesLabel,
+  highlightPlayerId,
+  tournamentData,
+  compact = false,
+}: {
+  matches: Match[];
+  categoriesLabel?: (catId: string) => string;
+  highlightPlayerId?: string | null;
+  tournamentData?: Record<string, TournamentData>;
+  compact?: boolean;
+}) {
+  if (matches.length === 0) {
+    return <div className="text-[11px] text-gray-500 text-center py-2">試合予定なし</div>;
+  }
+  return (
+    <div className="flex flex-col gap-1">
+      {matches.map((m, idx) => {
+        const no = idx + 1;
+        const isCompleted = m.status === 'completed';
+        const isActive = m.status === 'active';
+        const isHL = !!(highlightPlayerId && (m.playerA?.id === highlightPlayerId || m.playerB?.id === highlightPlayerId));
+        const typeLabel = m.isThirdPlace
+          ? '3位決定戦'
+          : m.type === 'league'
+            ? `${String.fromCharCode(65 + (m.groupIndex || 0))}グループ`
+            : (tournamentData ? matchTypeLabel(m, tournamentData) : 'トーナメント');
+        return (
+          <div
+            key={m.id}
+            className={`flex items-center gap-2 ${compact ? 'px-2 py-1' : 'px-2.5 py-1.5'} rounded-md`}
+            style={{
+              background: isActive
+                ? 'rgba(239,68,68,0.08)'
+                : isCompleted
+                  ? 'rgba(34,197,94,0.04)'
+                  : isHL
+                    ? 'rgba(185,28,28,0.08)'
+                    : 'rgba(255,255,255,0.02)',
+              border: `1px solid ${
+                isActive ? 'rgba(239,68,68,0.25)'
+                : isCompleted ? 'rgba(34,197,94,0.1)'
+                : isHL ? 'rgba(185,28,28,0.2)'
+                : 'rgba(255,255,255,0.05)'
+              }`,
+            }}
+          >
+            <div
+              className="flex-shrink-0 w-7 text-center font-bold text-[11px]"
+              style={{ color: isActive ? '#EF4444' : isCompleted ? '#22C55E' : '#9CA3AF' }}
+            >
+              {no}
+            </div>
+            {categoriesLabel ? (
+              <div className="min-w-[90px]">
+                <div className="text-[10px] font-semibold text-gray-300 truncate">
+                  {categoriesLabel(m.categoryId)}
+                </div>
+                <div className="text-[9px] font-bold" style={{ color: matchTypeColor(m) }}>
+                  {typeLabel}
+                </div>
+              </div>
+            ) : (
+              <div className="min-w-[70px]">
+                <div className="text-[10px] font-bold" style={{ color: matchTypeColor(m) }}>
+                  {typeLabel}
+                </div>
+              </div>
+            )}
+            <div className="flex-1 text-[11px] min-w-0">
+              <span
+                className="truncate inline-block max-w-full"
+                style={{
+                  fontWeight: (highlightPlayerId && m.playerA?.id === highlightPlayerId) ? 700 : 400,
+                  color: (highlightPlayerId && m.playerA?.id === highlightPlayerId) ? '#FCA5A5' : '#D1D5DB',
+                }}
+              >
+                {m.playerA ? <NameWithKana name={m.playerA.name} kana={m.playerA.nameKana} size="sm" /> : '—'}
+              </span>
+              <span className="text-gray-600 mx-1">vs</span>
+              <span
+                className="truncate inline-block max-w-full"
+                style={{
+                  fontWeight: (highlightPlayerId && m.playerB?.id === highlightPlayerId) ? 700 : 400,
+                  color: (highlightPlayerId && m.playerB?.id === highlightPlayerId) ? '#FCA5A5' : '#D1D5DB',
+                }}
+              >
+                {m.playerB ? <NameWithKana name={m.playerB.name} kana={m.playerB.nameKana} size="sm" /> : '—'}
+              </span>
+            </div>
+            <div className="flex-shrink-0 text-[9px] font-bold">
+              {isActive ? (
+                <Badge color="#EF4444">進行中</Badge>
+              ) : isCompleted ? (
+                <span className="inline-flex items-center gap-1">
+                  <span className="text-white font-bold text-[10px]">{m.scoreA}-{m.scoreB}</span>
+                  {m.overtime && <span className="text-amber-400 text-[8px]">延長</span>}
+                </span>
+              ) : (
+                <Badge color="#9CA3AF">待機</Badge>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ==========================================
 // 最終順位表示
 // ==========================================
 function FinalRankingsDisplay({ rankings }: { rankings: FinalRanking[] }) {
@@ -3175,6 +3447,7 @@ function RefereePage() {
     venueAssignments,
     catPhases,
     tournamentData,
+    leagueGroups,
     activateMatch,
     deactivateMatch,
     activateTeamMatch,
@@ -3187,6 +3460,8 @@ function RefereePage() {
   const autoOpenMatchId = useRef<string | null>(null);
   // 試合順序のカスタム並べ替え（コートごと）
   const [matchOrderMap, setMatchOrderMap] = useState<Record<string, string[]>>({});
+  // サイドパネル（総当たり表・試合順リスト）の表示制御
+  const [showSchedulePanel, setShowSchedulePanel] = useState(true);
 
   const vCats = Object.entries(venueAssignments)
     .filter(([, v]) => v === refereeVenue)
@@ -3249,7 +3524,7 @@ function RefereePage() {
   return (
     <div>
       {/* コート選択 */}
-      <div className="flex gap-1.5 mb-4">
+      <div className="flex gap-1.5 mb-4 items-center">
         {VENUES.map(v => (
           <button
             key={v.id}
@@ -3260,7 +3535,21 @@ function RefereePage() {
             {v.name}
           </button>
         ))}
+        <button
+          onClick={() => setShowSchedulePanel(p => !p)}
+          className="hidden lg:inline-flex px-3 py-2 rounded-md text-[11px] font-semibold cursor-pointer border-none"
+          style={{
+            background: showSchedulePanel ? 'rgba(185,28,28,0.15)' : 'rgba(255,255,255,0.06)',
+            color: showSchedulePanel ? '#FCA5A5' : '#D6DCE8',
+          }}
+          title="総当たり表・試合順パネルの表示/非表示"
+        >
+          {showSchedulePanel ? '◀ 試合順' : '試合順 ▶'}
+        </button>
       </div>
+
+      <div className={`flex flex-col ${showSchedulePanel ? 'lg:flex-row' : ''} gap-3`}>
+        <div className="flex-1 min-w-0">
 
       {/* 現在の試合 */}
       <div
@@ -3568,6 +3857,100 @@ function RefereePage() {
         );
       })()}
 
+        </div>
+        {/* サイドパネル: 試合順・総当たり表 */}
+        {showSchedulePanel && (() => {
+          // コート内の全試合（BYE除く、完了・進行中・待機）
+          const allVenueMatches = vMatches.filter(m => !m.isBye);
+          // 表示順: 完了 → 進行中 → 待機（待機はpendingMatchesの並び順）
+          const completedVM = allVenueMatches.filter(m => m.status === 'completed');
+          const activeVM = allVenueMatches.filter(m => m.status === 'active');
+          const sortedSchedule = [...completedVM, ...activeVM, ...pendingMatches];
+
+          // コート内のリーグ戦カテゴリ別の総当たり表
+          const leagueCatsInVenue = Array.from(new Set(
+            vMatches.filter(m => m.type === 'league').map(m => m.categoryId)
+          ));
+
+          return (
+            <aside
+              className="lg:w-[360px] xl:w-[400px] flex-shrink-0 bg-white/[0.03] border border-white/[0.07] rounded-[10px] p-3 self-start lg:sticky lg:top-20"
+              style={{ maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}
+            >
+              <div className="text-sm font-bold text-white mb-2 flex items-center gap-2">
+                <span
+                  className="w-2 h-2 rounded-full inline-block"
+                  style={{ background: venue?.color }}
+                />
+                {venue?.name} 試合順・対戦表
+              </div>
+
+              {/* 総当たり表（リーグ戦カテゴリ毎） */}
+              {leagueCatsInVenue.length > 0 && (
+                <div className="mb-3">
+                  <div className="text-[10px] font-bold text-gray-400 mb-2">総当たり表</div>
+                  {leagueCatsInVenue.map(catId => {
+                    const cat = categories.find(c => c.id === catId);
+                    // 予選リーグ
+                    const preGroups = leagueGroups[catId] || [];
+                    const preMatches = allMatches.filter(m =>
+                      m.categoryId === catId && m.type === 'league' && m.phaseKey === PHASE_TYPES.LEAGUE
+                    );
+                    // リーグ決勝
+                    const lfGroup = leagueGroups[`${catId}_final`]?.[0];
+                    const lfMatches = allMatches.filter(m =>
+                      m.categoryId === catId && m.type === 'league' && m.phaseKey === PHASE_TYPES.LEAGUE_FINAL
+                    );
+                    return (
+                      <div key={catId} className="mb-3">
+                        <div className="text-[10px] font-semibold text-gray-300 mb-1">
+                          {cat?.label}
+                        </div>
+                        {(preGroups as Player[][]).map((g, gi) => {
+                          const gM = preMatches.filter(m => m.groupIndex === gi);
+                          return (
+                            <LeagueMatrix
+                              key={gi}
+                              group={g}
+                              matches={gM}
+                              title={`${String.fromCharCode(65 + gi)}グループ`}
+                            />
+                          );
+                        })}
+                        {lfGroup && lfMatches.length > 0 && (
+                          <LeagueMatrix
+                            group={lfGroup as Player[]}
+                            matches={lfMatches}
+                            title="リーグ決勝"
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* 試合順（進行状況別） */}
+              <div>
+                <div className="text-[10px] font-bold text-gray-400 mb-2">
+                  試合順（全{sortedSchedule.length}試合）
+                </div>
+                {sortedSchedule.length === 0 ? (
+                  <div className="text-[11px] text-gray-500 text-center py-3">試合なし</div>
+                ) : (
+                  <MatchScheduleList
+                    matches={sortedSchedule}
+                    categoriesLabel={(cid) => categories.find(c => c.id === cid)?.label || cid}
+                    tournamentData={tournamentData}
+                    compact
+                  />
+                )}
+              </div>
+            </aside>
+          );
+        })()}
+      </div>
+
       {/* 試合結果入力モーダル */}
       {recordingMatch && (
         <MatchRecordModal
@@ -3739,6 +4122,11 @@ function SpectatorPage() {
 
   const activeCats = getActiveCats();
   const [specCat, setSpecCat] = useState<string | null>(null);
+  // 注目選手（指定するとリーグ表・試合順で強調表示）
+  const [highlightPlayerId, setHighlightPlayerId] = useState<string | null>(null);
+
+  // カテゴリが切り替わったら注目選手をリセット
+  useEffect(() => { setHighlightPlayerId(null); }, [specCat]);
 
   return (
     <div>
@@ -3849,15 +4237,91 @@ function SpectatorPage() {
             return null;
           })()}
 
-          {/* 予選リーグ結果 */}
+          {/* 注目選手セレクタ（リーグ戦・トーナメント試合の対戦相手も含めて全選手） */}
+          {(() => {
+            const catMatches = allMatches.filter(m => m.categoryId === specCat);
+            const seen = new Set<string>();
+            const players: { id: string; name: string; nameKana?: string; dojo?: string }[] = [];
+            // 予選リーグに登録された選手
+            const preG = leagueGroups[specCat] || [];
+            (preG as Player[][]).forEach(g => g.forEach(p => {
+              if (!seen.has(p.id)) { seen.add(p.id); players.push(p); }
+            }));
+            // 試合に登場する選手も追加（トーナメントのみ参加など）
+            catMatches.forEach(m => {
+              [m.playerA, m.playerB].forEach(p => {
+                if (p && !seen.has(p.id)) { seen.add(p.id); players.push(p); }
+              });
+            });
+            if (players.length === 0) return null;
+            return (
+              <div className="mb-3">
+                <div className="text-[11px] font-bold text-gray-400 mb-1.5">
+                  注目選手を選択（試合順・順位表で強調表示されます）
+                </div>
+                <div className="flex flex-wrap gap-[4px]">
+                  {players.map(p => {
+                    const isHL = highlightPlayerId === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => setHighlightPlayerId(isHL ? null : p.id)}
+                        className="px-2 py-[3px] rounded text-[10px] font-semibold cursor-pointer"
+                        style={{
+                          border: `1px solid ${isHL ? '#B91C1C' : 'rgba(255,255,255,0.08)'}`,
+                          background: isHL ? 'rgba(185,28,28,0.15)' : 'rgba(255,255,255,0.03)',
+                          color: isHL ? '#FCA5A5' : '#D1D5DB',
+                        }}
+                      >
+                        {p.name}
+                        {p.dojo && <span className="ml-1 text-[9px] text-gray-500">({p.dojo})</span>}
+                      </button>
+                    );
+                  })}
+                  {highlightPlayerId && (
+                    <button
+                      onClick={() => setHighlightPlayerId(null)}
+                      className="px-2 py-[3px] rounded text-[10px] text-gray-400 cursor-pointer"
+                      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}
+                    >
+                      クリア
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* 予選リーグ結果（順位表 + 総当たり表） */}
           {(() => {
             const prelimMatches = allMatches.filter(m => m.categoryId === specCat && m.type === 'league' && m.phaseKey === PHASE_TYPES.LEAGUE);
             const groups = leagueGroups[specCat] || [];
             if (prelimMatches.length === 0 || groups.length === 0) return null;
             return (groups as Player[][]).map((group, gi) => {
               const gM = prelimMatches.filter(m => m.groupIndex === gi);
-              return <StandingsTable key={gi} standings={calcStandings(group, gM)} groupIdx={gi} advanceCount={catAdvanceCounts[specCat] || 1} />;
+              const groupLabel = `${String.fromCharCode(65 + gi)}グループ 総当たり表`;
+              return (
+                <div key={gi} className="mb-3">
+                  <StandingsTable standings={calcStandings(group, gM)} groupIdx={gi} advanceCount={catAdvanceCounts[specCat] || 1} />
+                  <LeagueMatrix group={group} matches={gM} title={groupLabel} highlightPlayerId={highlightPlayerId} />
+                </div>
+              );
             });
+          })()}
+
+          {/* リーグ決勝の総当たり表 */}
+          {(() => {
+            const lfMatches = allMatches.filter(m => m.categoryId === specCat && m.type === 'league' && m.phaseKey === PHASE_TYPES.LEAGUE_FINAL);
+            const lfPlayers = leagueGroups[`${specCat}_final`]?.[0];
+            if (!lfPlayers || lfMatches.length === 0) return null;
+            return (
+              <LeagueMatrix
+                group={lfPlayers as Player[]}
+                matches={lfMatches}
+                title="リーグ決勝 総当たり表"
+                highlightPlayerId={highlightPlayerId}
+              />
+            );
           })()}
 
           {/* リーグ決勝順位表 */}
@@ -3925,6 +4389,48 @@ function SpectatorPage() {
               totalRounds={tournamentData[specCat].totalRounds}
             />
           )}
+
+          {/* 試合順リスト（カテゴリ内の全試合・予定順） */}
+          {(() => {
+            const catMatches = allMatches.filter(m => m.categoryId === specCat && !m.isBye);
+            if (catMatches.length === 0) return null;
+            // 表示順: リーグ→リーグ決勝→予選トーナメント→本戦トーナメント、
+            //        同種別内では作成順（= 生成時の試合順）を維持
+            const phaseOrder: Record<string, number> = {
+              [PHASE_TYPES.LEAGUE]: 0,
+              [PHASE_TYPES.LEAGUE_FINAL]: 1,
+              [PHASE_TYPES.PRE_TOURNAMENT]: 2,
+              [PHASE_TYPES.FINAL_TOURNAMENT]: 3,
+            };
+            const origIdx = new Map(allMatches.map((m, i) => [m.id, i]));
+            const sorted = [...catMatches].sort((a, b) => {
+              const pa = phaseOrder[a.phaseKey] ?? 99;
+              const pb = phaseOrder[b.phaseKey] ?? 99;
+              if (pa !== pb) return pa - pb;
+              // リーグ戦はグループ順
+              if (a.type === 'league' && b.type === 'league' && (a.groupIndex ?? 0) !== (b.groupIndex ?? 0)) {
+                return (a.groupIndex ?? 0) - (b.groupIndex ?? 0);
+              }
+              // トーナメントは3位決定戦 > ラウンド順
+              if (a.type === 'tournament' && b.type === 'tournament') {
+                if (a.isThirdPlace !== b.isThirdPlace) return a.isThirdPlace ? -1 : 1;
+                if ((a.round ?? 0) !== (b.round ?? 0)) return (a.round ?? 0) - (b.round ?? 0);
+              }
+              return (origIdx.get(a.id) ?? 0) - (origIdx.get(b.id) ?? 0);
+            });
+            return (
+              <div className="mt-4">
+                <div className="text-xs font-bold text-white mb-2">
+                  試合順（全{sorted.length}試合）
+                </div>
+                <MatchScheduleList
+                  matches={sorted}
+                  highlightPlayerId={highlightPlayerId}
+                  tournamentData={tournamentData}
+                />
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>

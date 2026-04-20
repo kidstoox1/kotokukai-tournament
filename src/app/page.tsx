@@ -3297,6 +3297,8 @@ function MonitorPage() {
     categories,
     allMatches,
     venueAssignments,
+    catPhases,
+    tournamentData,
     getTotalMatches,
     getCompletedMatches,
     getProgressPct,
@@ -3326,6 +3328,16 @@ function MonitorPage() {
             .map(([c]) => c);
           const vM = allMatches.filter(m => vCats.includes(m.categoryId) && !m.isBye);
           const active = vM.find(m => m.status === 'active');
+          // 進行中の試合が無い場合は「次の試合」（記録係画面トップと同じ試合）を表示
+          const nextPending = !active ? vM
+            .filter(m => m.status === 'pending' && m.playerA && m.playerB)
+            .filter(m => !(catPhases[m.categoryId] === PHASE_TYPES.AWAITING_FINALS && isFinalMatch(m, tournamentData) && !m.venueId))
+            .sort((a, b) => {
+              if (a.isThirdPlace && !b.isThirdPlace) return -1;
+              if (!a.isThirdPlace && b.isThirdPlace) return 1;
+              return (a.round || 0) - (b.round || 0);
+            })[0] : null;
+          const display = active || nextPending;
           const done = vM.filter(m => m.status === 'completed').length;
           const total = vM.length;
           const pct = total > 0 ? Math.round((done / total) * 100) : 0;
@@ -3350,28 +3362,36 @@ function MonitorPage() {
               </div>
               <ProgressBar pct={pct} color={venue.color} />
               <div className="text-[10px] text-gray-400 mt-1 mb-2.5">{done}/{total}試合完了</div>
-              {active ? (
+              {display ? (
                 <div className="rounded-lg p-2.5" style={{ background: `${venue.color}0A`, border: `1px solid ${venue.color}25` }}>
-                  <div className="text-[10px] font-semibold mb-0.5" style={{ color: venue.color }}>
-                    {categories.find(c => c.id === active.categoryId)?.label}
+                  <div className="flex items-center justify-between mb-0.5">
+                    <div className="text-[10px] font-semibold" style={{ color: venue.color }}>
+                      {categories.find(c => c.id === display.categoryId)?.label}
+                    </div>
+                    <div className="text-[9px] font-bold px-1.5 py-[1px] rounded" style={{
+                      background: active ? `${venue.color}30` : 'rgba(255,255,255,0.06)',
+                      color: active ? venue.color : '#9CA3AF',
+                    }}>
+                      {active ? '試合中' : '次の試合'}
+                    </div>
                   </div>
                   <div
                     className="text-[9px] font-semibold mb-1"
-                    style={{ color: active.type === 'league' ? '#60A5FA' : '#FCA5A5' }}
+                    style={{ color: display.type === 'league' ? '#60A5FA' : '#FCA5A5' }}
                   >
-                    {active.type === 'league'
-                      ? `${String.fromCharCode(65 + (active.groupIndex || 0))}グループ`
+                    {display.type === 'league'
+                      ? `${String.fromCharCode(65 + (display.groupIndex || 0))}グループ`
                       : 'トーナメント'}
                   </div>
                   <div className="text-center">
                     <div className="inline-block text-center mx-1">
-                      <span className="font-bold text-sm" style={{ color: RED }}><NameWithKana name={active.playerA?.name || ''} kana={active.playerA?.nameKana} size="sm" /></span>
-                      {active.playerA?.dojo && <div className="text-[9px] text-gray-400">{active.playerA.dojo}</div>}
+                      <span className="font-bold text-sm" style={{ color: RED }}><NameWithKana name={display.playerA?.name || ''} kana={display.playerA?.nameKana} size="sm" /></span>
+                      {display.playerA?.dojo && <div className="text-[9px] text-gray-400">{display.playerA.dojo}</div>}
                     </div>
                     <span className="mx-2 text-gray-600 font-extrabold">VS</span>
                     <div className="inline-block text-center mx-1">
-                      <span className="font-bold text-sm" style={{ color: WHITE_PLAYER }}><NameWithKana name={active.playerB?.name || ''} kana={active.playerB?.nameKana} size="sm" /></span>
-                      {active.playerB?.dojo && <div className="text-[9px] text-gray-400">{active.playerB.dojo}</div>}
+                      <span className="font-bold text-sm" style={{ color: WHITE_PLAYER }}><NameWithKana name={display.playerB?.name || ''} kana={display.playerB?.nameKana} size="sm" /></span>
+                      {display.playerB?.dojo && <div className="text-[9px] text-gray-400">{display.playerB.dojo}</div>}
                     </div>
                   </div>
                 </div>
@@ -3424,40 +3444,60 @@ function SpectatorPage() {
         <div className="text-[10px] text-gray-500">30秒ごとに自動更新（本番時）</div>
       </div>
 
-      {/* 現在進行中の試合 */}
+      {/* 現在進行中の試合 / 次の試合 */}
       <div className="bg-white/[0.03] border border-white/[0.07] rounded-[10px] p-4 mb-3">
-        <div className="text-sm font-bold text-white mb-3">現在進行中の試合</div>
-        {allMatches.filter(m => m.status === 'active').length === 0 ? (
-          <div className="text-gray-500 text-center py-4">現在進行中の試合はありません</div>
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {VENUES.map(v => {
-              const active = allMatches.find(
-                m => m.status === 'active' &&
-                  Object.entries(venueAssignments).some(
-                    ([c, vid]) => vid === v.id && c === m.categoryId
-                  )
-              );
-              if (!active) return null;
-              return (
+        <div className="text-sm font-bold text-white mb-3">現在の試合</div>
+        {(() => {
+          const venueDisplays = VENUES.map(v => {
+            const vCats = Object.entries(venueAssignments)
+              .filter(([, vid]) => vid === v.id)
+              .map(([c]) => c);
+            const vM = allMatches.filter(m => vCats.includes(m.categoryId) && !m.isBye);
+            const active = vM.find(m => m.status === 'active');
+            const nextPending = !active ? vM
+              .filter(m => m.status === 'pending' && m.playerA && m.playerB)
+              .filter(m => !(catPhases[m.categoryId] === PHASE_TYPES.AWAITING_FINALS && isFinalMatch(m, tournamentData) && !m.venueId))
+              .sort((a, b) => {
+                if (a.isThirdPlace && !b.isThirdPlace) return -1;
+                if (!a.isThirdPlace && b.isThirdPlace) return 1;
+                return (a.round || 0) - (b.round || 0);
+              })[0] : null;
+            const display = active || nextPending;
+            return { v, display, isActive: !!active };
+          }).filter(x => x.display);
+
+          if (venueDisplays.length === 0) {
+            return <div className="text-gray-500 text-center py-4">予定された試合はありません</div>;
+          }
+          return (
+            <div className="grid grid-cols-2 gap-3">
+              {venueDisplays.map(({ v, display, isActive }) => (
                 <div
                   key={v.id}
                   className="p-2.5 rounded-lg"
                   style={{ background: `${v.color}08`, border: `1px solid ${v.color}20` }}
                 >
-                  <div className="text-[10px] font-semibold mb-1" style={{ color: v.color }}>
-                    {v.name} — {categories.find(c => c.id === active.categoryId)?.label}
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="text-[10px] font-semibold" style={{ color: v.color }}>
+                      {v.name} — {categories.find(c => c.id === display!.categoryId)?.label}
+                    </div>
+                    <div className="text-[9px] font-bold px-1.5 py-[1px] rounded" style={{
+                      background: isActive ? `${v.color}30` : 'rgba(255,255,255,0.06)',
+                      color: isActive ? v.color : '#9CA3AF',
+                    }}>
+                      {isActive ? '試合中' : '次の試合'}
+                    </div>
                   </div>
                   <div className="text-center text-[13px] font-semibold">
-                    <span style={{ color: RED }}><NameWithKana name={active.playerA?.name || ''} kana={active.playerA?.nameKana} size="sm" /></span>
+                    <span style={{ color: RED }}><NameWithKana name={display!.playerA?.name || ''} kana={display!.playerA?.nameKana} size="sm" /></span>
                     <span className="mx-1.5 text-gray-500">VS</span>
-                    <span style={{ color: WHITE_PLAYER }}><NameWithKana name={active.playerB?.name || ''} kana={active.playerB?.nameKana} size="sm" /></span>
+                    <span style={{ color: WHITE_PLAYER }}><NameWithKana name={display!.playerB?.name || ''} kana={display!.playerB?.nameKana} size="sm" /></span>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        )}
+              ))}
+            </div>
+          );
+        })()}
       </div>
 
       {/* カテゴリ選択 */}

@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "dev",
+      "name": "tournament-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--", "--hostname", "0.0.0.0"],
+      "runtimeArgs": ["run", "dev"],
       "port": 3000
     }
   ]

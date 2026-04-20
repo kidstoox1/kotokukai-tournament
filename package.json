@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.2",
+    "docx": "^9.6.1",
     "next": "^15.1.0",
     "pptxgenjs": "^4.0.1",
     "react": "^19.0.0",
@@ -25,6 +26,7 @@
     "eslint": "^9.0.0",
     "eslint-config-next": "^15.1.0",
     "postcss": "^8.5.0",
+    "puppeteer": "^24.40.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.0"
   }

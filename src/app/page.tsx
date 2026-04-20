@@ -2515,155 +2515,82 @@ function AdminPage() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [nextPhaseModal, setNextPhaseModal] = useState<{ catId: string; currentPhase: PhaseType } | null>(null);
   const [confirmRevert, setConfirmRevert] = useState<string | null>(null);
-  // グループ/段 終了のポップアップ通知（管理画面はコート問わず全体を監視）
-  const [groupCompletionNotice, setGroupCompletionNotice] = useState<{
-    completedLabel: string;
-    nextLabel: string | null;
+  // カテゴリのフェーズ完了通知（管理者が次ステージへ進める操作が必要）
+  // 例: 「小学3年男子」のリーグ戦が全グループ終了 → 管理者がリーグ決勝 or 決勝トーナメントを選ぶ
+  const [adminPhaseNotice, setAdminPhaseNotice] = useState<{
+    catId: string;
+    catLabel: string;
+    phase: PhaseType;
+    phaseLabel: string;
     venueColor: string;
     venueName: string;
+    hasNext: boolean;
   } | null>(null);
-  const notifiedUnitsRef = useRef<Set<string>>(new Set());
-  const didInitCompletionRef = useRef(false);
+  const notifiedPhasesRef = useRef<Set<string>>(new Set());
+  const didInitPhaseNoticeRef = useRef(false);
 
   const handleSubmitMatch = useCallback((m: Match) => {
     submitMatchResult(m);
     setRecordingMatch(null);
   }, [submitMatchResult]);
 
-  // 試合状態の変化を監視して、グループ/段 終了時にポップアップを出す
-  // 記録係だけでなく管理者がどこから入力しても、また別デバイスで記録係が
-  // 入力した内容が同期されてきたタイミングでも検知する。
+  // 各カテゴリのフェーズ完了を監視し、完了したタイミングで管理者にポップアップ通知する
+  // リーグ戦全グループ終了、予選トーナメント終了、リーグ決勝終了、決勝トーナメント終了 のいずれも検知
+  // 記録係が別デバイスで入力しても、管理者が直接入力しても、
+  // store の更新を監視して自動で検知するため取りこぼさない
   useEffect(() => {
     if (!initialized) {
-      // リセットや未初期化時は追跡もリセット
-      notifiedUnitsRef.current = new Set();
-      didInitCompletionRef.current = false;
+      notifiedPhasesRef.current = new Set();
+      didInitPhaseNoticeRef.current = false;
       return;
     }
 
-    type Unit = {
-      key: string;
-      matches: Match[];
-      categoryId: string;
-      venueId: string | null;
-      type: 'league' | 'tournament';
-      phaseKey: PhaseType;
-      groupIndex?: number;
-      round?: number;
-      isThirdPlace?: boolean;
-    };
+    const state = useTournamentStore.getState();
+    const activeCats = state.getActiveCats();
 
-    const unitMap = new Map<string, Unit>();
-    for (const x of allMatches) {
-      let key: string;
-      if (x.type === 'league') {
-        key = `L:${x.categoryId}:${x.phaseKey}:${x.groupIndex ?? 0}`;
-      } else {
-        key = `T:${x.categoryId}:${x.phaseKey}:${x.round ?? 0}:${x.isThirdPlace ? 1 : 0}`;
-      }
-      let u = unitMap.get(key);
-      if (!u) {
-        const venueId = x.venueId || venueAssignments[x.categoryId] || null;
-        u = {
-          key,
-          matches: [],
-          categoryId: x.categoryId,
-          venueId,
-          type: x.type,
-          phaseKey: x.phaseKey,
-          groupIndex: x.groupIndex,
-          round: x.round,
-          isThirdPlace: x.isThirdPlace,
-        };
-        unitMap.set(key, u);
-      }
-      u.matches.push(x);
+    // 現時点で「フェーズ完了」しているカテゴリを集める
+    const currentComplete = new Map<
+      string,
+      { catId: string; catLabel: string; phase: PhaseType }
+    >();
+    for (const c of activeCats) {
+      if (c.phase === PHASE_TYPES.SETUP) continue;
+      if (c.phase === PHASE_TYPES.DONE) continue;
+      if (!state.isPhaseComplete(c.id)) continue;
+      const key = `${c.id}:${c.phase}`;
+      currentComplete.set(key, { catId: c.id, catLabel: c.label, phase: c.phase });
     }
 
-    // 初回は既に完了している単位を「通知済み」として無視する
-    // （ページ開いた瞬間に過去の終了ポップアップが出ないようにする）
-    if (!didInitCompletionRef.current) {
-      for (const [key, u] of unitMap) {
-        if (u.matches.every(m => m.status === 'completed' || m.isBye)) {
-          notifiedUnitsRef.current.add(key);
-        }
+    // 初回マウント時点で既に完了しているものは通知済み扱いにして無視する
+    if (!didInitPhaseNoticeRef.current) {
+      for (const key of currentComplete.keys()) {
+        notifiedPhasesRef.current.add(key);
       }
-      didInitCompletionRef.current = true;
+      didInitPhaseNoticeRef.current = true;
       return;
     }
 
-    // 新しく完了した単位を探す
-    for (const [key, u] of unitMap) {
-      if (notifiedUnitsRef.current.has(key)) continue;
-      if (u.matches.length === 0) continue;
-      if (!u.matches.every(m => m.status === 'completed' || m.isBye)) continue;
+    // 新しく完了したカテゴリ・フェーズを検出
+    for (const [key, info] of currentComplete) {
+      if (notifiedPhasesRef.current.has(key)) continue;
+      notifiedPhasesRef.current.add(key);
 
-      notifiedUnitsRef.current.add(key);
-
-      const cat = categories.find(c => c.id === u.categoryId);
-      const catLabel = cat?.label || '';
-      let completedLabel: string;
-      if (u.type === 'league') {
-        if (u.phaseKey === PHASE_TYPES.LEAGUE_FINAL) {
-          completedLabel = `${catLabel} リーグ決勝`;
-        } else {
-          completedLabel = `${catLabel} ${String.fromCharCode(65 + (u.groupIndex ?? 0))}グループ`;
-        }
-      } else if (u.isThirdPlace) {
-        completedLabel = `${catLabel} 3位決定戦`;
-      } else {
-        completedLabel = `${catLabel} ${matchTypeLabel(u.matches[0], tournamentData)}`;
-      }
-
-      // 次の試合(同じコートの次のpending)を探す
-      const venueId = u.venueId;
+      const venueId = venueAssignments[info.catId];
       const venue = VENUES.find(v => v.id === venueId);
-      let nextLabel: string | null = null;
-      if (venueId) {
-        const venueCats = Object.entries(venueAssignments)
-          .filter(([, v]) => v === venueId)
-          .map(([c]) => c);
-        const venueMatches = allMatches.filter(x =>
-          !x.isBye && (
-            venueCats.includes(x.categoryId) ||
-            (x.venueId === venueId && catPhases[x.categoryId] === PHASE_TYPES.AWAITING_FINALS && isFinalMatch(x, tournamentData))
-          )
-        );
-        const pending = venueMatches
-          .filter(x => x.status === 'pending' && x.playerA && x.playerB)
-          .filter(x => !(catPhases[x.categoryId] === PHASE_TYPES.AWAITING_FINALS && isFinalMatch(x, tournamentData) && !x.venueId))
-          .sort((a, b) => {
-            if (a.isThirdPlace && !b.isThirdPlace) return -1;
-            if (!a.isThirdPlace && b.isThirdPlace) return 1;
-            return (a.round || 0) - (b.round || 0);
-          });
-        const next = pending[0];
-        if (next) {
-          const nCat = categories.find(c => c.id === next.categoryId);
-          const nCatLabel = nCat?.label || '';
-          if (next.type === 'league') {
-            if (next.phaseKey === PHASE_TYPES.LEAGUE_FINAL) {
-              nextLabel = `${nCatLabel} リーグ決勝`;
-            } else {
-              nextLabel = `${nCatLabel} ${String.fromCharCode(65 + (next.groupIndex ?? 0))}グループ`;
-            }
-          } else if (next.isThirdPlace) {
-            nextLabel = `${nCatLabel} 3位決定戦`;
-          } else {
-            nextLabel = `${nCatLabel} ${matchTypeLabel(next, tournamentData)}`;
-          }
-        }
-      }
+      const hasNext = !!NEXT_PHASE_OPTIONS[info.phase] && NEXT_PHASE_OPTIONS[info.phase].length > 0;
 
-      setGroupCompletionNotice({
-        completedLabel,
-        nextLabel,
-        venueColor: venue?.color || '#B91C1C',
+      setAdminPhaseNotice({
+        catId: info.catId,
+        catLabel: info.catLabel,
+        phase: info.phase,
+        phaseLabel: PHASE_LABELS[info.phase] || info.phase,
+        venueColor: venue?.color || '#22C55E',
         venueName: venue?.name || 'コート',
+        hasNext,
       });
-      // 同tick内で複数単位が終了する稀なケースでは後勝ちとなる
+      // 同tick内で複数カテゴリが完了した稀なケースは後勝ち
     }
-  }, [initialized, allMatches, categories, venueAssignments, catPhases, tournamentData]);
+  }, [initialized, allMatches, catPhases, venueAssignments]);
 
   return (
     <div>
@@ -3420,68 +3347,92 @@ function AdminPage() {
         />
       )}
 
-      {/* グループ/段 終了ポップアップ通知 */}
-      {groupCompletionNotice && (
+      {/* カテゴリのフェーズ完了通知（管理者向け：次ステージへの操作が必要） */}
+      {adminPhaseNotice && (
         <div
           className="fixed inset-0 z-[200] flex items-center justify-center p-4"
           style={{ background: 'rgba(0,0,0,0.7)' }}
-          onClick={() => setGroupCompletionNotice(null)}
+          onClick={() => setAdminPhaseNotice(null)}
         >
           <div
             className="w-full max-w-md rounded-2xl p-6 text-center"
             style={{
               background: '#1F2937',
-              border: `2px solid ${groupCompletionNotice.venueColor}`,
-              boxShadow: `0 0 40px ${groupCompletionNotice.venueColor}60`,
+              border: `2px solid ${adminPhaseNotice.venueColor}`,
+              boxShadow: `0 0 40px ${adminPhaseNotice.venueColor}60`,
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="text-5xl mb-3">🎉</div>
+            <div className="text-5xl mb-3">{adminPhaseNotice.hasNext ? '📣' : '🏁'}</div>
             <div
               className="inline-block px-3 py-1 rounded-full text-[11px] font-bold mb-2"
               style={{
-                background: `${groupCompletionNotice.venueColor}20`,
-                color: groupCompletionNotice.venueColor,
-                border: `1px solid ${groupCompletionNotice.venueColor}60`,
+                background: `${adminPhaseNotice.venueColor}20`,
+                color: adminPhaseNotice.venueColor,
+                border: `1px solid ${adminPhaseNotice.venueColor}60`,
               }}
             >
-              {groupCompletionNotice.venueName}
+              {adminPhaseNotice.venueName}
             </div>
-            <div className="text-xs font-semibold mb-1" style={{ color: groupCompletionNotice.venueColor }}>
-              試合終了のお知らせ
+            <div className="text-xs font-semibold mb-2" style={{ color: adminPhaseNotice.venueColor }}>
+              {adminPhaseNotice.hasNext ? '管理者の操作が必要です' : 'フェーズ終了'}
             </div>
-            <div className="text-xl font-extrabold text-white mb-4 leading-tight">
-              {groupCompletionNotice.completedLabel}
-              <br />
-              <span className="text-base text-gray-300 font-semibold">が終了しました</span>
+            <div className="text-xl font-extrabold text-white mb-1 leading-tight">
+              {adminPhaseNotice.catLabel}
             </div>
-            {groupCompletionNotice.nextLabel ? (
-              <div
-                className="rounded-lg p-3 mb-5"
+            <div className="text-base text-gray-200 font-semibold mb-4">
+              <span
+                className="inline-block px-2 py-0.5 rounded mr-1"
                 style={{
-                  background: `${groupCompletionNotice.venueColor}18`,
-                  border: `1px solid ${groupCompletionNotice.venueColor}40`,
+                  background: `${adminPhaseNotice.venueColor}20`,
+                  color: adminPhaseNotice.venueColor,
                 }}
               >
-                <div className="text-[11px] text-gray-400 mb-1">次の試合</div>
-                <div className="text-lg font-bold" style={{ color: groupCompletionNotice.venueColor }}>
-                  {groupCompletionNotice.nextLabel}
+                {adminPhaseNotice.phaseLabel}
+              </span>
+              が完了しました
+            </div>
+            {adminPhaseNotice.hasNext ? (
+              <div
+                className="rounded-lg p-3 mb-5 text-left"
+                style={{
+                  background: `${adminPhaseNotice.venueColor}18`,
+                  border: `1px solid ${adminPhaseNotice.venueColor}40`,
+                }}
+              >
+                <div className="text-[11px] text-gray-400 mb-1">次の操作</div>
+                <div className="text-sm font-bold text-white">
+                  「次ステージへ →」から進出人数・次形式を選んで進行してください
                 </div>
               </div>
             ) : (
               <div className="rounded-lg p-3 mb-5 bg-white/[0.04] border border-white/10">
                 <div className="text-sm text-gray-300 font-semibold">
-                  このコートの試合は全て終了しました
+                  この部の最終結果が確定しました
                 </div>
               </div>
             )}
-            <button
-              onClick={() => setGroupCompletionNotice(null)}
-              className="w-full px-6 py-3 rounded-lg text-white text-base font-bold cursor-pointer border-none"
-              style={{ background: groupCompletionNotice.venueColor }}
-            >
-              OK
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setAdminPhaseNotice(null)}
+                className="flex-1 px-4 py-3 rounded-lg text-gray-200 text-sm font-bold cursor-pointer border-none"
+                style={{ background: 'rgba(255,255,255,0.08)' }}
+              >
+                閉じる
+              </button>
+              {adminPhaseNotice.hasNext && (
+                <button
+                  onClick={() => {
+                    setNextPhaseModal({ catId: adminPhaseNotice.catId, currentPhase: adminPhaseNotice.phase });
+                    setAdminPhaseNotice(null);
+                  }}
+                  className="flex-1 px-4 py-3 rounded-lg text-white text-sm font-bold cursor-pointer border-none"
+                  style={{ background: adminPhaseNotice.venueColor }}
+                >
+                  次ステージへ →
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

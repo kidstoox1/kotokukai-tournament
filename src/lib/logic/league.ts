@@ -117,7 +117,9 @@ export function calcStandings(group: Player[], matches: Match[]): LeagueStanding
     a.totalWarnings += m.warningsA % 2;
     b.totalWarnings += m.warningsB % 2;
 
-    if (m.resultType === RESULT.DRAW) {
+    // 延長戦で決着した場合は引き分けではなく勝敗扱い（勝点3 vs 0）
+    // 本戦が引き分けで延長戦が無い場合のみ、引き分け扱い（勝点1 vs 1）
+    if (m.resultType === RESULT.DRAW && !m.overtime) {
       a.draws++;
       b.draws++;
       a.points += 1;

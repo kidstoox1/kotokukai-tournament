@@ -21,7 +21,7 @@ import { calcStandings } from '@/lib/logic/league';
 import { getFinalRankings, getLeagueFinalRankings } from '@/lib/logic/rankings';
 import { calculateFinalScores } from '@/lib/logic/scoring';
 import { generateId } from '@/lib/uuid';
-import type { Match, PhaseType, FinalRanking, LeagueStanding, Player, TournamentData, Team, TeamMatch, TeamBout, BoutPosition, TeamMember } from '@/lib/types';
+import type { Match, PhaseType, FinalRanking, LeagueStanding, Player, TournamentData, Team, TeamMatch, TeamBout, BoutPosition, TeamMember, OvertimeResult } from '@/lib/types';
 
 // ==========================================
 // ページ種別
@@ -98,18 +98,36 @@ function WarningIndicator({ warnings }: { warnings: number }) {
   );
 }
 
-// スコア + 警告を一括表示するヘルパー
+// スコア + 警告を一括表示するヘルパー（延長戦があれば2行目に表示）
 function ScoreWithWarnings({ match }: { match: Match }) {
   if (match.status !== 'completed') return <span>vs</span>;
   const hasWarnings = (match.warningsA || 0) > 0 || (match.warningsB || 0) > 0;
-  if (!hasWarnings) return <span>{match.scoreA} - {match.scoreB}</span>;
-  return (
+  const mainScore = !hasWarnings ? (
+    <span>{match.scoreA} - {match.scoreB}</span>
+  ) : (
     <span className="inline-flex items-center gap-0.5">
       <span>{match.scoreA}</span>
       {(match.warningsA || 0) > 0 && <WarningIndicator warnings={match.warningsA} />}
       <span> - </span>
       <span>{match.scoreB}</span>
       {(match.warningsB || 0) > 0 && <WarningIndicator warnings={match.warningsB} />}
+    </span>
+  );
+  if (!match.overtime) return mainScore;
+  const ot = match.overtime;
+  const hasOtWarnings = (ot.warningsA || 0) > 0 || (ot.warningsB || 0) > 0;
+  return (
+    <span className="inline-flex flex-col items-center leading-tight">
+      {mainScore}
+      <span className="text-[9px] text-amber-400 font-semibold inline-flex items-center gap-0.5 mt-0.5">
+        <span className="text-[8px] text-amber-300/70 mr-0.5">延長</span>
+        <span>{ot.scoreA}</span>
+        {(ot.warningsA || 0) > 0 && <WarningIndicator warnings={ot.warningsA} />}
+        <span>-</span>
+        <span>{ot.scoreB}</span>
+        {(ot.warningsB || 0) > 0 && <WarningIndicator warnings={ot.warningsB} />}
+        {!hasOtWarnings && null}
+      </span>
     </span>
   );
 }
@@ -374,6 +392,26 @@ function MatchRecordModal({
       : 'A'
   );
 
+  // 延長戦関連 state
+  const [overtimeMode, setOvertimeMode] = useState(!!match.overtime);
+  const [otScoreA, setOtScoreA] = useState(match.overtime?.scoreA || 0);
+  const [otScoreB, setOtScoreB] = useState(match.overtime?.scoreB || 0);
+  const [otWarningsA, setOtWarningsA] = useState(match.overtime?.warningsA || 0);
+  const [otWarningsB, setOtWarningsB] = useState(match.overtime?.warningsB || 0);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  // 延長戦の勝者判定（1本取る or 警告2で決着）
+  const otWinnerId: string | null =
+    otScoreA === 1 ? (match.playerA?.id || null)
+    : otScoreB === 1 ? (match.playerB?.id || null)
+    : otWarningsA >= 2 ? (match.playerB?.id || null)
+    : otWarningsB >= 2 ? (match.playerA?.id || null)
+    : null;
+  const otWinnerName: string | null =
+    otWinnerId === match.playerA?.id ? (match.playerA?.name || null)
+    : otWinnerId === match.playerB?.id ? (match.playerB?.name || null)
+    : null;
+
   // 最終スコア計算
   const bonusA = Math.floor(warningsB / 2);
   const bonusB = Math.floor(warningsA / 2);
@@ -394,33 +432,62 @@ function MatchRecordModal({
         ? (disqSide === 'B' ? 0 : 2)
         : scoreB + bonusB;
 
-  const handleSubmit = () => {
+  // メイン結果の計算（プレビュー用）
+  const mainResult = match.playerA && match.playerB
+    ? calculateFinalScores({
+        scoreA, scoreB, warningsA, warningsB,
+        resultType, defaultWinSide, disqSide,
+        playerA: match.playerA, playerB: match.playerB,
+      })
+    : null;
+  // メインが引き分けになるかどうか
+  const mainIsDraw = resultType === RESULT.NORMAL
+    && mainResult !== null
+    && mainResult.finalScoreA === mainResult.finalScoreB;
+
+  // 試合終了・結果確定ボタン → 確認ダイアログ表示
+  const openConfirm = () => {
     if (!match.playerA || !match.playerB) return;
-    const result = calculateFinalScores({
-      scoreA,
-      scoreB,
-      warningsA,
-      warningsB,
-      resultType,
-      defaultWinSide,
-      disqSide,
-      playerA: match.playerA,
-      playerB: match.playerB,
-    });
-    // 通常モードで本数が同点の場合は自動的に引き分け扱い
-    const finalResultType =
-      resultType === RESULT.NORMAL && result.finalScoreA === result.finalScoreB
-        ? RESULT.DRAW
-        : resultType;
+    setShowConfirm(true);
+  };
+
+  // 延長戦へ移行
+  const goToOvertime = () => {
+    setShowConfirm(false);
+    setOvertimeMode(true);
+  };
+
+  // 最終的な submit 実行
+  const doSubmit = () => {
+    if (!match.playerA || !match.playerB || !mainResult) return;
+    const finalResultType = mainIsDraw ? RESULT.DRAW : resultType;
+
+    let overtimeData: OvertimeResult | undefined = undefined;
+    let finalWinnerId = mainResult.winnerId;
+    let finalWinnerName = mainResult.winnerName;
+    if (overtimeMode && otWinnerId) {
+      overtimeData = {
+        scoreA: otScoreA,
+        scoreB: otScoreB,
+        warningsA: otWarningsA,
+        warningsB: otWarningsB,
+        winnerId: otWinnerId,
+        winnerName: otWinnerName,
+      };
+      finalWinnerId = otWinnerId;
+      finalWinnerName = otWinnerName;
+    }
+
     onSubmit({
       ...match,
-      scoreA: result.finalScoreA,
-      scoreB: result.finalScoreB,
+      scoreA: mainResult.finalScoreA,
+      scoreB: mainResult.finalScoreB,
       warningsA,
       warningsB,
       resultType: finalResultType,
-      winnerId: result.winnerId,
-      winnerName: result.winnerName,
+      winnerId: finalWinnerId,
+      winnerName: finalWinnerName,
+      overtime: overtimeData,
       status: 'completed',
     });
   };
@@ -693,6 +760,119 @@ function MatchRecordModal({
           </div>
         </div>
 
+        {/* 延長戦入力 */}
+        {overtimeMode && (
+          <div className="mt-4 px-4 py-3.5 rounded-[10px]" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.3)' }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-[13px] font-bold text-amber-400">延長戦</div>
+              <button
+                className="text-[11px] text-gray-400 hover:text-white bg-transparent border-none cursor-pointer underline"
+                onClick={() => {
+                  setOvertimeMode(false);
+                  setOtScoreA(0); setOtScoreB(0);
+                  setOtWarningsA(0); setOtWarningsB(0);
+                }}
+              >
+                延長戦を取消
+              </button>
+            </div>
+            <div className="text-[10px] text-gray-400 mb-3">
+              1本を取るか、警告を2回受けた時点で決着（警告はリセット）
+            </div>
+            <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-start">
+              {/* 白（左）延長 */}
+              <div className="p-2.5 rounded-[10px] text-center" style={{ border: `1px solid ${WHITE_BORDER}`, background: WHITE_BG }}>
+                <div className="text-[10px] font-bold mb-1" style={{ color: WHITE_PLAYER }}>白 {match.playerB?.name}</div>
+                <div className="text-[9px] text-gray-400 mb-1">取った本数</div>
+                <div className="flex justify-center gap-1.5">
+                  {[0, 1].map(n => (
+                    <button
+                      key={n}
+                      onClick={() => setOtScoreB(n)}
+                      className="w-10 h-10 rounded-[8px] text-base font-extrabold flex items-center justify-center cursor-pointer"
+                      style={{
+                        border: otScoreB === n ? `2px solid ${WHITE_PLAYER}` : '1px solid rgba(255,255,255,0.12)',
+                        background: otScoreB === n ? WHITE_BG : 'rgba(255,255,255,0.03)',
+                        color: otScoreB === n ? WHITE_PLAYER : '#9CA3AF',
+                      }}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-2 mb-1 text-[9px] text-amber-500">白への警告</div>
+                <div className="flex justify-center gap-1.5">
+                  {[0, 1, 2].map(n => (
+                    <button
+                      key={n}
+                      onClick={() => setOtWarningsB(n)}
+                      className="w-8 h-8 rounded-[8px] text-xs font-extrabold flex items-center justify-center cursor-pointer"
+                      style={{
+                        border: otWarningsB === n ? '2px solid #F59E0B' : '1px solid rgba(255,255,255,0.12)',
+                        background: otWarningsB === n ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.03)',
+                        color: otWarningsB === n ? '#F59E0B' : '#9CA3AF',
+                      }}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="text-base font-extrabold text-gray-600 pt-8">VS</div>
+
+              {/* 赤（右）延長 */}
+              <div className="p-2.5 rounded-[10px] text-center" style={{ border: `1px solid ${RED}40`, background: `${RED}08` }}>
+                <div className="text-[10px] font-bold mb-1" style={{ color: RED }}>赤 {match.playerA?.name}</div>
+                <div className="text-[9px] text-gray-400 mb-1">取った本数</div>
+                <div className="flex justify-center gap-1.5">
+                  {[0, 1].map(n => (
+                    <button
+                      key={n}
+                      onClick={() => setOtScoreA(n)}
+                      className="w-10 h-10 rounded-[8px] text-base font-extrabold flex items-center justify-center cursor-pointer"
+                      style={{
+                        border: otScoreA === n ? `2px solid ${RED}` : '1px solid rgba(255,255,255,0.12)',
+                        background: otScoreA === n ? `${RED}25` : 'rgba(255,255,255,0.03)',
+                        color: otScoreA === n ? RED : '#9CA3AF',
+                      }}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-2 mb-1 text-[9px] text-amber-500">赤への警告</div>
+                <div className="flex justify-center gap-1.5">
+                  {[0, 1, 2].map(n => (
+                    <button
+                      key={n}
+                      onClick={() => setOtWarningsA(n)}
+                      className="w-8 h-8 rounded-[8px] text-xs font-extrabold flex items-center justify-center cursor-pointer"
+                      style={{
+                        border: otWarningsA === n ? '2px solid #F59E0B' : '1px solid rgba(255,255,255,0.12)',
+                        background: otWarningsA === n ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.03)',
+                        color: otWarningsA === n ? '#F59E0B' : '#9CA3AF',
+                      }}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            {/* 延長戦の勝者プレビュー */}
+            <div className="mt-3 text-center text-[12px] font-bold">
+              {otWinnerId ? (
+                <span className="text-green-500">
+                  延長戦勝者: {otWinnerId === match.playerA?.id ? '赤' : '白'} {otWinnerName}
+                </span>
+              ) : (
+                <span className="text-gray-500">※ 1本取るか警告2で決着</span>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* ボタン */}
         <div className="flex justify-end gap-2 mt-4">
           <button
@@ -702,12 +882,122 @@ function MatchRecordModal({
             キャンセル
           </button>
           <button
-            className="px-6 py-2.5 rounded-md bg-green-600 text-white text-xs font-semibold cursor-pointer border-none"
-            onClick={handleSubmit}
+            className="px-6 py-2.5 rounded-md text-white text-xs font-semibold border-none"
+            style={{
+              background: overtimeMode && !otWinnerId ? '#4B5563' : '#16A34A',
+              cursor: overtimeMode && !otWinnerId ? 'not-allowed' : 'pointer',
+              opacity: overtimeMode && !otWinnerId ? 0.6 : 1,
+            }}
+            disabled={overtimeMode && !otWinnerId}
+            onClick={openConfirm}
           >
-            {isEdit ? '修正を確定' : '試合終了・結果確定'}
+            {isEdit ? '修正を確定' : overtimeMode ? '延長戦 確定' : '試合終了・結果確定'}
           </button>
         </div>
+
+        {/* 確認ダイアログ */}
+        {showConfirm && (
+          <div
+            className="fixed inset-0 bg-black/70 flex items-center justify-center z-[300]"
+            onClick={() => setShowConfirm(false)}
+          >
+            <div
+              className="bg-modal-bg rounded-[14px] p-6 max-w-[420px] w-[92%] border border-white/10"
+              onClick={e => e.stopPropagation()}
+            >
+              <h4 className="text-white text-base font-bold m-0 mb-3">試合結果の確定</h4>
+
+              {/* 結果サマリー */}
+              <div className="px-3 py-3 rounded-lg bg-white/[0.04] border border-white/10 mb-4">
+                {/* 本戦スコア */}
+                <div className="flex items-center justify-center gap-3 text-[14px] font-bold">
+                  <span style={{ color: WHITE_PLAYER }}>白 {match.playerB?.name}</span>
+                  <span className="text-white text-lg">
+                    {mainResult?.finalScoreB} - {mainResult?.finalScoreA}
+                  </span>
+                  <span style={{ color: RED }}>赤 {match.playerA?.name}</span>
+                </div>
+                {/* 延長戦スコア */}
+                {overtimeMode && otWinnerId && (
+                  <div className="mt-2 pt-2 border-t border-white/10 flex items-center justify-center gap-3 text-[12px]">
+                    <span className="text-amber-400 font-semibold">延長:</span>
+                    <span className="text-white font-bold">{otScoreB} - {otScoreA}</span>
+                    {(otWarningsA > 0 || otWarningsB > 0) && (
+                      <span className="text-amber-400 text-[10px]">
+                        警告 {otWarningsB}-{otWarningsA}
+                      </span>
+                    )}
+                  </div>
+                )}
+                {/* 最終判定 */}
+                <div className="text-center mt-2 text-[13px] font-bold">
+                  {overtimeMode && otWinnerId ? (
+                    <span className="text-green-500">
+                      {otWinnerId === match.playerA?.id ? '赤' : '白'} {otWinnerName} の勝ち（延長戦）
+                    </span>
+                  ) : resultType === RESULT.DEFAULT_WIN ? (
+                    <span className="text-green-500">
+                      {defaultWinSide === 'A' ? '赤' : '白'} {defaultWinSide === 'A' ? match.playerA?.name : match.playerB?.name} の不戦勝
+                    </span>
+                  ) : resultType === RESULT.DISQUALIFICATION ? (
+                    <span className="text-red-500">
+                      {disqSide === 'A' ? '赤' : '白'} {disqSide === 'A' ? match.playerA?.name : match.playerB?.name} 失格
+                    </span>
+                  ) : mainResult && mainResult.finalScoreA > mainResult.finalScoreB ? (
+                    <span className="text-green-500">赤 {match.playerA?.name} の勝ち</span>
+                  ) : mainResult && mainResult.finalScoreB > mainResult.finalScoreA ? (
+                    <span className="text-green-500">白 {match.playerB?.name} の勝ち</span>
+                  ) : (
+                    <span className="text-amber-500">引き分け</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="text-[12px] text-gray-400 mb-4 text-center">この内容で確定しますか？</div>
+
+              {/* ボタン群 */}
+              <div className="flex flex-col gap-2">
+                {mainIsDraw && !overtimeMode ? (
+                  <>
+                    <button
+                      className="w-full px-4 py-2.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold cursor-pointer border-none"
+                      onClick={goToOvertime}
+                    >
+                      延長戦へ
+                    </button>
+                    <button
+                      className="w-full px-4 py-2.5 rounded-md bg-green-600 hover:bg-green-700 text-white text-sm font-semibold cursor-pointer border-none"
+                      onClick={() => { setShowConfirm(false); doSubmit(); }}
+                    >
+                      引き分けで確定
+                    </button>
+                    <button
+                      className="w-full px-4 py-2 rounded-md bg-gray-600 text-white text-xs font-semibold cursor-pointer border-none"
+                      onClick={() => setShowConfirm(false)}
+                    >
+                      キャンセル
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      className="w-full px-4 py-2.5 rounded-md bg-green-600 hover:bg-green-700 text-white text-sm font-semibold cursor-pointer border-none"
+                      onClick={() => { setShowConfirm(false); doSubmit(); }}
+                    >
+                      確定
+                    </button>
+                    <button
+                      className="w-full px-4 py-2 rounded-md bg-gray-600 text-white text-xs font-semibold cursor-pointer border-none"
+                      onClick={() => setShowConfirm(false)}
+                    >
+                      キャンセル
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -2347,8 +2637,8 @@ function AdminPage() {
                         </span>
                         {m.status === 'completed' ? (
                           <div className="flex gap-1 items-center">
-                            <Badge color={m.resultType === RESULT.DRAW ? '#F59E0B' : '#22C55E'}>
-                              {m.resultType === RESULT.DRAW ? '引分' : m.resultType === RESULT.DEFAULT_WIN ? '不戦勝' : m.resultType === RESULT.DISQUALIFICATION ? '失格' : '完了'}
+                            <Badge color={m.resultType === RESULT.DRAW && !m.overtime ? '#F59E0B' : '#22C55E'}>
+                              {m.resultType === RESULT.DRAW && !m.overtime ? '引分' : m.resultType === RESULT.DEFAULT_WIN ? '不戦勝' : m.resultType === RESULT.DISQUALIFICATION ? '失格' : '完了'}
                             </Badge>
                             <button
                               className="px-1.5 py-[3px] rounded-md bg-gray-600 text-white text-[9px] font-semibold cursor-pointer border-none"
@@ -2477,8 +2767,8 @@ function AdminPage() {
                         </span>
                         {m.status === 'completed' ? (
                           <div className="flex gap-1 items-center">
-                            <Badge color={m.resultType === RESULT.DRAW ? '#F59E0B' : '#22C55E'}>
-                              {m.resultType === RESULT.DRAW ? '引分' : '完了'}
+                            <Badge color={m.resultType === RESULT.DRAW && !m.overtime ? '#F59E0B' : '#22C55E'}>
+                              {m.resultType === RESULT.DRAW && !m.overtime ? '引分' : '完了'}
                             </Badge>
                             <button
                               className="px-1.5 py-[3px] rounded-md bg-gray-600 text-white text-[9px] font-semibold cursor-pointer border-none"
@@ -3178,10 +3468,22 @@ function RefereePage() {
                 >
                   <span style={{ color: WHITE_PLAYER, fontSize: '9px' }}>白 </span><NameWithKana name={m.playerB?.name || ''} kana={m.playerB?.nameKana} size="sm" />
                 </span>
-                <span className="text-[13px] font-bold text-white min-w-[50px] text-center inline-flex items-center justify-center">
-                  {m.scoreB}{(m.warningsB || 0) > 0 && <WarningIndicator warnings={m.warningsB} />}
-                  {' - '}
-                  {m.scoreA}{(m.warningsA || 0) > 0 && <WarningIndicator warnings={m.warningsA} />}
+                <span className="text-[13px] font-bold text-white min-w-[50px] text-center inline-flex flex-col items-center justify-center leading-tight">
+                  <span className="inline-flex items-center">
+                    {m.scoreB}{(m.warningsB || 0) > 0 && <WarningIndicator warnings={m.warningsB} />}
+                    {' - '}
+                    {m.scoreA}{(m.warningsA || 0) > 0 && <WarningIndicator warnings={m.warningsA} />}
+                  </span>
+                  {m.overtime && (
+                    <span className="text-[9px] text-amber-400 font-semibold inline-flex items-center gap-0.5 mt-0.5">
+                      <span className="text-[8px] text-amber-300/70 mr-0.5">延長</span>
+                      <span>{m.overtime.scoreB}</span>
+                      {(m.overtime.warningsB || 0) > 0 && <WarningIndicator warnings={m.overtime.warningsB} />}
+                      <span>-</span>
+                      <span>{m.overtime.scoreA}</span>
+                      {(m.overtime.warningsA || 0) > 0 && <WarningIndicator warnings={m.overtime.warningsA} />}
+                    </span>
+                  )}
                 </span>
                 <span
                   className="flex-1 text-xs text-right"

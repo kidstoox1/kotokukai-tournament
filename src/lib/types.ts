@@ -35,6 +35,18 @@ export interface MatchPlayer {
 // --- 試合結果タイプ ---
 export type ResultType = 'normal' | 'draw' | 'default_win' | 'disqualification';
 
+// --- 延長戦結果 ---
+// 引き分けの場合に行われる延長戦。1本先取 or 2警告で決着。
+// 警告はリセットされる（通常戦から引き継がない）
+export interface OvertimeResult {
+  scoreA: number;       // 赤の取得本数 (0 or 1)
+  scoreB: number;       // 白の取得本数 (0 or 1)
+  warningsA: number;    // 赤への警告 (0〜2)
+  warningsB: number;    // 白への警告 (0〜2)
+  winnerId: string | null;
+  winnerName: string | null;
+}
+
 // --- 試合ステータス ---
 export type MatchStatus = 'pending' | 'active' | 'completed';
 
@@ -77,6 +89,9 @@ export interface Match {
   resultType: ResultType | null;
   winnerId: string | null;
   winnerName: string | null;
+
+  // 延長戦（引き分けの場合のみ）
+  overtime?: OvertimeResult;
 
   // 状態
   status: MatchStatus;

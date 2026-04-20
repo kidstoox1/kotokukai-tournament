@@ -3993,10 +3993,41 @@ function RefereePage() {
       {(() => {
         const completedVenueMatches = vMatches.filter(m => m.status === 'completed' && !m.isBye);
         if (completedVenueMatches.length === 0) return null;
+
+        // カテゴリ単位でまとめつつ、構造的な順序で並べる：
+        // 1. カテゴリは初回登場順（最初に完了試合が出たカテゴリが上）
+        // 2. カテゴリ内はトーナメント→リーグの順
+        // 3. トーナメント内は「決勝 → 3位決定戦 → 準決勝 → 準々決勝 → ... → 1回戦」
+        //    （round降順、同round内は非3位決定戦を先に出す）
+        // 4. リーグ内は「リーグ決勝 → 予選リーグ(グループ順)」
+        const catOrderIdx = new Map<string, number>();
+        completedVenueMatches.forEach(m => {
+          if (!catOrderIdx.has(m.categoryId)) catOrderIdx.set(m.categoryId, catOrderIdx.size);
+        });
+        const sortedCompleted = [...completedVenueMatches].sort((a, b) => {
+          const ca = catOrderIdx.get(a.categoryId) ?? 0;
+          const cb = catOrderIdx.get(b.categoryId) ?? 0;
+          if (ca !== cb) return ca - cb;
+          if (a.type !== b.type) return a.type === 'tournament' ? -1 : 1;
+          if (a.type === 'tournament') {
+            const ra = a.round || 0;
+            const rb = b.round || 0;
+            if (ra !== rb) return rb - ra; // 上位ラウンド(=決勝)を先に
+            // 同じラウンドなら 決勝 → 3位決定戦 の順
+            if (!!a.isThirdPlace !== !!b.isThirdPlace) return a.isThirdPlace ? 1 : -1;
+            return (a.position || 0) - (b.position || 0);
+          }
+          // league
+          const pa = a.phaseKey === PHASE_TYPES.LEAGUE_FINAL ? 0 : 1;
+          const pb = b.phaseKey === PHASE_TYPES.LEAGUE_FINAL ? 0 : 1;
+          if (pa !== pb) return pa - pb;
+          return (a.groupIndex || 0) - (b.groupIndex || 0);
+        });
+
         return (
           <div className="bg-white/[0.03] border border-white/[0.07] rounded-[10px] p-4 mb-3">
             <div className="text-sm font-bold text-white mb-3">完了した試合（{completedVenueMatches.length}試合）</div>
-            {completedVenueMatches.slice(-10).reverse().map(m => (
+            {sortedCompleted.map(m => (
               <div
                 key={m.id}
                 className="flex items-center gap-2 px-2.5 py-1.5 mb-1 rounded-md"

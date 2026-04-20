@@ -4172,14 +4172,26 @@ function SpectatorPage() {
               {venueDisplays.map(({ v, display, isActive, hasAnyMatch }) => {
                 const isSelected = specVenue === v.id;
                 return (
-                  <button
+                  <div
                     key={v.id}
-                    onClick={() => setSpecVenue(isSelected ? null : v.id)}
-                    disabled={!hasAnyMatch}
-                    className="p-2.5 rounded-lg text-left cursor-pointer transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                    role="button"
+                    tabIndex={hasAnyMatch ? 0 : -1}
+                    aria-pressed={isSelected}
+                    aria-disabled={!hasAnyMatch}
+                    onClick={() => { if (hasAnyMatch) setSpecVenue(isSelected ? null : v.id); }}
+                    onKeyDown={(e) => {
+                      if (!hasAnyMatch) return;
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSpecVenue(isSelected ? null : v.id);
+                      }
+                    }}
+                    className="p-2.5 rounded-lg transition-all"
                     style={{
                       background: isSelected ? `${v.color}20` : `${v.color}08`,
                       border: `${isSelected ? 2 : 1}px solid ${isSelected ? v.color : `${v.color}20`}`,
+                      cursor: hasAnyMatch ? 'pointer' : 'not-allowed',
+                      opacity: hasAnyMatch ? 1 : 0.5,
                     }}
                   >
                     <div className="flex items-center justify-between mb-1">
@@ -4214,7 +4226,7 @@ function SpectatorPage() {
                         {isSelected ? '▲ 試合順を閉じる' : '▼ 試合順を表示'}
                       </div>
                     )}
-                  </button>
+                  </div>
                 );
               })}
             </div>

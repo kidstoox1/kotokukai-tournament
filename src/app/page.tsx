@@ -4199,6 +4199,32 @@ function RefereePage() {
                 </div>
               )}
 
+              {/* トーナメント表（トーナメント戦カテゴリ毎） */}
+              {(() => {
+                const tournCatsInVenue = Array.from(new Set(
+                  vMatches.filter(m => m.type === 'tournament').map(m => m.categoryId)
+                )).filter(cid => tournamentData[cid]);
+                if (tournCatsInVenue.length === 0) return null;
+                return (
+                  <div className="mb-3">
+                    <div className="text-[10px] font-bold text-gray-400 mb-2">トーナメント表</div>
+                    {tournCatsInVenue.map(catId => {
+                      const cat = categories.find(c => c.id === catId);
+                      const tMatches = allMatches.filter(m => m.categoryId === catId && m.type === 'tournament');
+                      const td = tournamentData[catId];
+                      return (
+                        <div key={catId} className="mb-3">
+                          <div className="text-[10px] font-semibold text-gray-300 mb-1">
+                            {cat?.label}
+                          </div>
+                          <BracketView matches={tMatches} totalRounds={td.totalRounds} />
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
               {/* 試合順（進行状況別） */}
               <div>
                 <div className="text-[10px] font-bold text-gray-400 mb-2">
@@ -4719,6 +4745,32 @@ function SpectatorPage() {
                 })}
               </div>
             )}
+
+            {/* トーナメント表（トーナメント戦カテゴリ毎） */}
+            {(() => {
+              const tournCatsInVenue = Array.from(new Set(
+                vAllMatches.filter(m => m.type === 'tournament').map(m => m.categoryId)
+              )).filter(cid => tournamentData[cid]);
+              if (tournCatsInVenue.length === 0) return null;
+              return (
+                <div className="mb-3">
+                  <div className="text-xs font-bold text-white mb-2">トーナメント表</div>
+                  {tournCatsInVenue.map(catId => {
+                    const cat = categories.find(c => c.id === catId);
+                    const tMatches = allMatches.filter(m => m.categoryId === catId && m.type === 'tournament');
+                    const td = tournamentData[catId];
+                    return (
+                      <div key={catId} className="mb-3">
+                        <div className="text-[11px] font-semibold text-gray-300 mb-1">
+                          {cat?.label}
+                        </div>
+                        <BracketView matches={tMatches} totalRounds={td.totalRounds} />
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
             {/* 試合順（完了→進行中→待機の順） */}
             <div>

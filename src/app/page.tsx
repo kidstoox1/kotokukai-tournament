@@ -374,8 +374,6 @@ function MatchRecordModal({
       : 'A'
   );
 
-  const isLeague = match.type === 'league';
-
   // 最終スコア計算
   const bonusA = Math.floor(warningsB / 2);
   const bonusB = Math.floor(warningsA / 2);
@@ -409,13 +407,18 @@ function MatchRecordModal({
       playerA: match.playerA,
       playerB: match.playerB,
     });
+    // 通常モードで本数が同点の場合は自動的に引き分け扱い
+    const finalResultType =
+      resultType === RESULT.NORMAL && result.finalScoreA === result.finalScoreB
+        ? RESULT.DRAW
+        : resultType;
     onSubmit({
       ...match,
       scoreA: result.finalScoreA,
       scoreB: result.finalScoreB,
       warningsA,
       warningsB,
-      resultType,
+      resultType: finalResultType,
       winnerId: result.winnerId,
       winnerName: result.winnerName,
       status: 'completed',
@@ -424,7 +427,6 @@ function MatchRecordModal({
 
   const resultTypes = [
     { type: RESULT.NORMAL, label: '通常（本数勝負）' },
-    ...(isLeague ? [{ type: RESULT.DRAW, label: '引き分け' }] : []),
     { type: RESULT.DEFAULT_WIN, label: '不戦勝' },
     { type: RESULT.DISQUALIFICATION, label: '失格' },
   ];
@@ -686,7 +688,7 @@ function MatchRecordModal({
             ) : finalScoreA > finalScoreB ? (
               <span className="text-green-500">赤 {match.playerA?.name} の勝ち</span>
             ) : (
-              <span className="text-amber-500">同点（{isLeague ? '引き分け' : '判定が必要'}）</span>
+              <span className="text-amber-500">引き分け</span>
             )}
           </div>
         </div>

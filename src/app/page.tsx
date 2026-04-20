@@ -4122,11 +4122,13 @@ function SpectatorPage() {
 
   const activeCats = getActiveCats();
   const [specCat, setSpecCat] = useState<string | null>(null);
+  // コート選択（Aコート等を押すとそのコートの試合順・総当たり表が展開）
+  const [specVenue, setSpecVenue] = useState<string | null>(null);
   // 注目選手（指定するとリーグ表・試合順で強調表示）
   const [highlightPlayerId, setHighlightPlayerId] = useState<string | null>(null);
 
-  // カテゴリが切り替わったら注目選手をリセット
-  useEffect(() => { setHighlightPlayerId(null); }, [specCat]);
+  // カテゴリ/コートが切り替わったら注目選手をリセット
+  useEffect(() => { setHighlightPlayerId(null); }, [specCat, specVenue]);
 
   return (
     <div>
@@ -4136,9 +4138,12 @@ function SpectatorPage() {
         <div className="text-[10px] text-gray-500">30秒ごとに自動更新（本番時）</div>
       </div>
 
-      {/* 現在進行中の試合 / 次の試合 */}
+      {/* 現在進行中の試合 / 次の試合 — コートカードをタップでそのコート詳細を展開 */}
       <div className="bg-white/[0.03] border border-white/[0.07] rounded-[10px] p-4 mb-3">
-        <div className="text-sm font-bold text-white mb-3">現在の試合</div>
+        <div className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+          <span>現在の試合</span>
+          <span className="text-[10px] text-gray-500 font-normal">コートをタップで試合順を表示</span>
+        </div>
         {(() => {
           const venueDisplays = VENUES.map(v => {
             const vCats = Object.entries(venueAssignments)
@@ -4155,42 +4160,248 @@ function SpectatorPage() {
                 return (a.round || 0) - (b.round || 0);
               })[0] : null;
             const display = active || nextPending;
-            return { v, display, isActive: !!active };
-          }).filter(x => x.display);
+            return { v, display, isActive: !!active, hasAnyMatch: vM.length > 0 };
+          });
 
-          if (venueDisplays.length === 0) {
+          const anyDisplay = venueDisplays.some(x => x.display);
+          if (!anyDisplay && !venueDisplays.some(x => x.hasAnyMatch)) {
             return <div className="text-gray-500 text-center py-4">予定された試合はありません</div>;
           }
           return (
             <div className="grid grid-cols-2 gap-3">
-              {venueDisplays.map(({ v, display, isActive }) => (
-                <div
-                  key={v.id}
-                  className="p-2.5 rounded-lg"
-                  style={{ background: `${v.color}08`, border: `1px solid ${v.color}20` }}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="text-[10px] font-semibold" style={{ color: v.color }}>
-                      {v.name} — {categories.find(c => c.id === display!.categoryId)?.label}
+              {venueDisplays.map(({ v, display, isActive, hasAnyMatch }) => {
+                const isSelected = specVenue === v.id;
+                return (
+                  <button
+                    key={v.id}
+                    onClick={() => setSpecVenue(isSelected ? null : v.id)}
+                    disabled={!hasAnyMatch}
+                    className="p-2.5 rounded-lg text-left cursor-pointer transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                    style={{
+                      background: isSelected ? `${v.color}20` : `${v.color}08`,
+                      border: `${isSelected ? 2 : 1}px solid ${isSelected ? v.color : `${v.color}20`}`,
+                    }}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="text-[10px] font-semibold flex items-center gap-1" style={{ color: v.color }}>
+                        <span>{v.name}</span>
+                        {display && (
+                          <span className="text-gray-400 font-normal">
+                            — {categories.find(c => c.id === display.categoryId)?.label}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[9px] font-bold px-1.5 py-[1px] rounded" style={{
+                        background: isActive ? `${v.color}30` : 'rgba(255,255,255,0.06)',
+                        color: isActive ? v.color : '#9CA3AF',
+                      }}>
+                        {isActive ? '試合中' : display ? '次の試合' : hasAnyMatch ? '終了' : '未割当'}
+                      </div>
                     </div>
-                    <div className="text-[9px] font-bold px-1.5 py-[1px] rounded" style={{
-                      background: isActive ? `${v.color}30` : 'rgba(255,255,255,0.06)',
-                      color: isActive ? v.color : '#9CA3AF',
-                    }}>
-                      {isActive ? '試合中' : '次の試合'}
-                    </div>
-                  </div>
-                  <div className="text-center text-[13px] font-semibold">
-                    <span style={{ color: RED }}><NameWithKana name={display!.playerA?.name || ''} kana={display!.playerA?.nameKana} size="sm" /></span>
-                    <span className="mx-1.5 text-gray-500">VS</span>
-                    <span style={{ color: WHITE_PLAYER }}><NameWithKana name={display!.playerB?.name || ''} kana={display!.playerB?.nameKana} size="sm" /></span>
-                  </div>
-                </div>
-              ))}
+                    {display ? (
+                      <div className="text-center text-[13px] font-semibold">
+                        <span style={{ color: RED }}><NameWithKana name={display.playerA?.name || ''} kana={display.playerA?.nameKana} size="sm" /></span>
+                        <span className="mx-1.5 text-gray-500">VS</span>
+                        <span style={{ color: WHITE_PLAYER }}><NameWithKana name={display.playerB?.name || ''} kana={display.playerB?.nameKana} size="sm" /></span>
+                      </div>
+                    ) : (
+                      <div className="text-center text-[11px] text-gray-500 py-1">
+                        {hasAnyMatch ? '全試合終了' : '試合なし'}
+                      </div>
+                    )}
+                    {hasAnyMatch && (
+                      <div className="text-[9px] text-center mt-1 font-semibold" style={{ color: isSelected ? v.color : '#6B7280' }}>
+                        {isSelected ? '▲ 試合順を閉じる' : '▼ 試合順を表示'}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           );
         })()}
       </div>
+
+      {/* コート詳細（選択されたコートの試合順・総当たり表） */}
+      {specVenue && (() => {
+        const v = VENUES.find(x => x.id === specVenue);
+        if (!v) return null;
+        const vCats = Object.entries(venueAssignments)
+          .filter(([, vid]) => vid === specVenue)
+          .map(([c]) => c);
+        const vAllMatches = allMatches.filter(m =>
+          !m.isBye && (
+            vCats.includes(m.categoryId) ||
+            (m.venueId === specVenue && catPhases[m.categoryId] === PHASE_TYPES.AWAITING_FINALS && isFinalMatch(m, tournamentData))
+          )
+        );
+        const completedVM = vAllMatches.filter(m => m.status === 'completed');
+        const activeVM = vAllMatches.filter(m => m.status === 'active');
+        const pendingVM = vAllMatches
+          .filter(m => m.status === 'pending' && m.playerA && m.playerB)
+          .filter(m => !(catPhases[m.categoryId] === PHASE_TYPES.AWAITING_FINALS && isFinalMatch(m, tournamentData) && !m.venueId))
+          .sort((a, b) => {
+            if (a.isThirdPlace && !b.isThirdPlace) return -1;
+            if (!a.isThirdPlace && b.isThirdPlace) return 1;
+            return (a.round || 0) - (b.round || 0);
+          });
+        const sortedVenueMatches = [...completedVM, ...activeVM, ...pendingVM];
+
+        // コート内のリーグ戦カテゴリ（総当たり表用）
+        const leagueCatsInVenue = Array.from(new Set(
+          vAllMatches.filter(m => m.type === 'league').map(m => m.categoryId)
+        ));
+        // コート内の選手一覧（注目選手セレクタ用）
+        const seenP = new Set<string>();
+        const venuePlayers: { id: string; name: string; nameKana?: string; dojo?: string }[] = [];
+        vAllMatches.forEach(m => {
+          [m.playerA, m.playerB].forEach(p => {
+            if (p && !seenP.has(p.id)) { seenP.add(p.id); venuePlayers.push(p); }
+          });
+        });
+
+        return (
+          <div
+            className="rounded-[10px] p-4 mb-3"
+            style={{ background: `${v.color}08`, border: `1px solid ${v.color}30` }}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-bold flex items-center gap-2" style={{ color: v.color }}>
+                <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: v.color }} />
+                {v.name}
+                <span className="text-[10px] text-gray-400 font-normal">
+                  （完了 {completedVM.length} / 進行中 {activeVM.length} / 待機 {pendingVM.length}）
+                </span>
+              </div>
+              <button
+                onClick={() => setSpecVenue(null)}
+                className="px-2 py-[3px] rounded text-[10px] text-gray-400 cursor-pointer"
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}
+              >
+                閉じる
+              </button>
+            </div>
+
+            {/* 担当カテゴリ一覧 */}
+            {vCats.length > 0 && (
+              <div className="mb-3 flex flex-wrap gap-[4px]">
+                {vCats.map(cid => {
+                  const c = categories.find(cc => cc.id === cid);
+                  return (
+                    <span
+                      key={cid}
+                      className="px-2 py-[2px] rounded text-[10px] font-semibold"
+                      style={{ background: 'rgba(255,255,255,0.04)', color: '#D1D5DB', border: '1px solid rgba(255,255,255,0.06)' }}
+                    >
+                      {c?.label}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* 注目選手セレクタ（コート内選手） */}
+            {venuePlayers.length > 0 && (
+              <div className="mb-3">
+                <div className="text-[11px] font-bold text-gray-400 mb-1.5">
+                  注目選手を選択（試合順・総当たり表で強調表示されます）
+                </div>
+                <div className="flex flex-wrap gap-[4px]">
+                  {venuePlayers.map(p => {
+                    const isHL = highlightPlayerId === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => setHighlightPlayerId(isHL ? null : p.id)}
+                        className="px-2 py-[3px] rounded text-[10px] font-semibold cursor-pointer"
+                        style={{
+                          border: `1px solid ${isHL ? '#B91C1C' : 'rgba(255,255,255,0.08)'}`,
+                          background: isHL ? 'rgba(185,28,28,0.15)' : 'rgba(255,255,255,0.03)',
+                          color: isHL ? '#FCA5A5' : '#D1D5DB',
+                        }}
+                      >
+                        {p.name}
+                        {p.dojo && <span className="ml-1 text-[9px] text-gray-500">({p.dojo})</span>}
+                      </button>
+                    );
+                  })}
+                  {highlightPlayerId && (
+                    <button
+                      onClick={() => setHighlightPlayerId(null)}
+                      className="px-2 py-[3px] rounded text-[10px] text-gray-400 cursor-pointer"
+                      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}
+                    >
+                      クリア
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 総当たり表（リーグ戦カテゴリ毎） */}
+            {leagueCatsInVenue.length > 0 && (
+              <div className="mb-3">
+                <div className="text-xs font-bold text-white mb-2">総当たり表</div>
+                {leagueCatsInVenue.map(catId => {
+                  const cat = categories.find(c => c.id === catId);
+                  const preGroups = leagueGroups[catId] || [];
+                  const preMatches = allMatches.filter(m =>
+                    m.categoryId === catId && m.type === 'league' && m.phaseKey === PHASE_TYPES.LEAGUE
+                  );
+                  const lfGroup = leagueGroups[`${catId}_final`]?.[0];
+                  const lfMatches = allMatches.filter(m =>
+                    m.categoryId === catId && m.type === 'league' && m.phaseKey === PHASE_TYPES.LEAGUE_FINAL
+                  );
+                  return (
+                    <div key={catId} className="mb-3">
+                      <div className="text-[11px] font-semibold text-gray-300 mb-1">
+                        {cat?.label}
+                      </div>
+                      {(preGroups as Player[][]).map((g, gi) => {
+                        const gM = preMatches.filter(m => m.groupIndex === gi);
+                        return (
+                          <LeagueMatrix
+                            key={gi}
+                            group={g}
+                            matches={gM}
+                            title={`${String.fromCharCode(65 + gi)}グループ`}
+                            highlightPlayerId={highlightPlayerId}
+                          />
+                        );
+                      })}
+                      {lfGroup && lfMatches.length > 0 && (
+                        <LeagueMatrix
+                          group={lfGroup as Player[]}
+                          matches={lfMatches}
+                          title="リーグ決勝"
+                          highlightPlayerId={highlightPlayerId}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* 試合順（完了→進行中→待機の順） */}
+            <div>
+              <div className="text-xs font-bold text-white mb-2">
+                試合順（全{sortedVenueMatches.length}試合）
+              </div>
+              {sortedVenueMatches.length === 0 ? (
+                <div className="text-[11px] text-gray-500 text-center py-3">試合なし</div>
+              ) : (
+                <MatchScheduleList
+                  matches={sortedVenueMatches}
+                  categoriesLabel={(cid) => categories.find(c => c.id === cid)?.label || cid}
+                  highlightPlayerId={highlightPlayerId}
+                  tournamentData={tournamentData}
+                />
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* カテゴリ選択 */}
       <div className="bg-white/[0.03] border border-white/[0.07] rounded-[10px] p-4 mb-3">

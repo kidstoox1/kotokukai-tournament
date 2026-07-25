@@ -11,9 +11,11 @@
 ## 技術スタック
 
 - **フロントエンド**: React (Next.js推奨)
-- **バックエンド/DB**: Supabase (PostgreSQL + Realtime)
+- **バックエンド/DB**: Firebase Firestore（プロジェクト: kotokukai-tournament / 大阪リージョン）
+  - 全状態を `tournament_state/main` ドキュメントにJSON文字列で保存、onSnapshotでリアルタイム同期
+  - 旧Supabase構成（2026-07に移行済み。無料プランの自動一時停止で同期が止まる事故があったため）
 - **ホスティング**: Vercel
-- **認証**: Supabase Auth（管理者・記録係のログイン）
+- **認証**: なし（URLでロール分離: / 管理者, /recorder 記録係, /viewer 観覧）
 
 ## 現在の状態
 

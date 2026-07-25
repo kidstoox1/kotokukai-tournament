@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef, createContext, useContext } from 'react';
 import { useTournamentStore } from '@/store/tournament';
-import { saveToSupabase, loadFromSupabase, subscribeToChanges } from '@/lib/sync';
+import { saveToCloud, loadFromCloud, subscribeToChanges } from '@/lib/sync';
 import {
   VENUES,
   PHASE_TYPES,
@@ -5169,48 +5169,52 @@ function TournamentApp({ role = 'admin', defaultCourt }: { role?: RoleType; defa
   const [syncStatus, setSyncStatus] = useState<'connecting' | 'connected' | 'offline'>('connecting');
   const isRemoteUpdate = useRef(false);
 
-  // --- Supabase リアルタイム同期 ---
+  // --- Firestore リアルタイム同期 ---
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
 
     const init = async () => {
-      // 1. Supabaseから最新状態を読み込み
+      // 1. Firestoreから最新状態を読み込み
       try {
-        const remoteState = await loadFromSupabase();
+        const remoteState = await loadFromCloud();
         if (remoteState && remoteState.initialized) {
           // リモートにデータがあればそちらを優先
           isRemoteUpdate.current = true;
           useTournamentStore.setState(remoteState);
           setTimeout(() => { isRemoteUpdate.current = false; }, 100);
         } else {
-          // リモートが空ならローカル(localStorage)のデータをSupabaseに保存
+          // リモートが空ならローカル(localStorage)のデータをFirestoreに保存
           const localState = useTournamentStore.getState();
           if (localState.initialized) {
-            saveToSupabase(localState as unknown as Record<string, unknown>);
+            saveToCloud(localState as unknown as Record<string, unknown>);
           }
         }
         setSyncStatus('connected');
       } catch {
+        // 通信・権限エラー時は正直にオフライン表示
         setSyncStatus('offline');
       }
 
-      // 2. Realtimeサブスクリプション（他端末からの変更を受信）
-      unsubscribe = subscribeToChanges((newState) => {
-        isRemoteUpdate.current = true;
-        useTournamentStore.setState(newState);
-        setTimeout(() => { isRemoteUpdate.current = false; }, 100);
-      });
+      // 2. リアルタイム監視（他端末からの変更をプッシュで受信、接続状態も反映）
+      unsubscribe = subscribeToChanges(
+        (newState) => {
+          isRemoteUpdate.current = true;
+          useTournamentStore.setState(newState);
+          setTimeout(() => { isRemoteUpdate.current = false; }, 100);
+        },
+        (status) => setSyncStatus(status),
+      );
     };
 
     init();
     return () => { if (unsubscribe) unsubscribe(); };
   }, []);
 
-  // 3. ローカルの変更をSupabaseに保存（リモート更新時はスキップ）
+  // 3. ローカルの変更をFirestoreに保存（リモート更新時はスキップ）
   useEffect(() => {
     const unsub = useTournamentStore.subscribe((state) => {
       if (!isRemoteUpdate.current) {
-        saveToSupabase(state as unknown as Record<string, unknown>);
+        saveToCloud(state as unknown as Record<string, unknown>);
       }
     });
     return unsub;

@@ -3918,7 +3918,7 @@ function FinalsPanel({
 // ==========================================
 // 記録係ページ
 // ==========================================
-function RefereePage() {
+function RefereePage({ fixedVenue }: { fixedVenue?: string }) {
   const {
     categories,
     allMatches,
@@ -3934,7 +3934,8 @@ function RefereePage() {
     submitMatchResult,
   } = useTournamentStore();
 
-  const [refereeVenue, setRefereeVenue] = useState('A');
+  // コート固定URL（/recorder/a 等）の場合はそのコートのみ表示・切替不可
+  const [refereeVenue, setRefereeVenue] = useState(fixedVenue || 'A');
   const [recordingMatch, setRecordingMatch] = useState<Match | null>(null);
   const [recordingTeamMatchId, setRecordingTeamMatchId] = useState<string | null>(null);
   const autoOpenMatchId = useRef<string | null>(null);
@@ -4107,18 +4108,27 @@ function RefereePage() {
 
   return (
     <div>
-      {/* コート選択 */}
+      {/* コート選択（コート固定URLの場合は固定表示のみ） */}
       <div className="flex gap-1.5 mb-4 items-center">
-        {VENUES.map(v => (
-          <button
-            key={v.id}
-            className="flex-1 py-2.5 rounded-md text-[13px] font-semibold text-white cursor-pointer border-none text-center"
-            style={{ background: v.id === refereeVenue ? v.color : '#374151' }}
-            onClick={() => setRefereeVenue(v.id)}
+        {fixedVenue ? (
+          <div
+            className="flex-1 py-2.5 rounded-md text-[13px] font-bold text-white text-center"
+            style={{ background: venue?.color || '#B91C1C' }}
           >
-            {v.name}
-          </button>
-        ))}
+            {venue?.name} 専用
+          </div>
+        ) : (
+          VENUES.map(v => (
+            <button
+              key={v.id}
+              className="flex-1 py-2.5 rounded-md text-[13px] font-semibold text-white cursor-pointer border-none text-center"
+              style={{ background: v.id === refereeVenue ? v.color : '#374151' }}
+              onClick={() => setRefereeVenue(v.id)}
+            >
+              {v.name}
+            </button>
+          ))
+        )}
         <button
           onClick={() => setShowSchedulePanel(p => !p)}
           className="hidden lg:inline-flex px-3 py-2 rounded-md text-[11px] font-semibold cursor-pointer border-none"
@@ -5429,7 +5439,7 @@ function TournamentApp({ role = 'admin', defaultCourt }: { role?: RoleType; defa
       {/* メインコンテンツ */}
       <main className="p-4 max-w-[1400px] mx-auto">
         {page === 'admin' && <AdminPage />}
-        {page === 'referee' && <RefereePage />}
+        {page === 'referee' && <RefereePage fixedVenue={defaultCourt} />}
         {page === 'monitor' && <MonitorPage />}
         {page === 'spectator' && <SpectatorPage />}
       </main>
@@ -5460,9 +5470,12 @@ function TournamentApp({ role = 'admin', defaultCourt }: { role?: RoleType; defa
 }
 
 // デフォルトエクスポート — URLパスでロールを判定
+// /recorder/a 〜 /recorder/d はコート固定の記録係専用ページ
 export default function Home() {
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
   const role: RoleType = pathname.startsWith('/viewer') ? 'viewer' : pathname.startsWith('/recorder') ? 'recorder' : 'admin';
-  return <TournamentApp role={role} />;
+  const courtMatch = pathname.match(/^\/recorder\/([a-dA-D])\/?$/);
+  const fixedCourt = courtMatch ? courtMatch[1].toUpperCase() : undefined;
+  return <TournamentApp role={role} defaultCourt={fixedCourt} />;
 }

@@ -32,11 +32,15 @@ type RoleType = 'admin' | 'recorder' | 'viewer';
 // ==========================================
 // コート別グループ実施順ヘルパー
 // ==========================================
-// グループ単位キー: リーグ `${categoryId}#L${groupIndex}` / トーナメント `${categoryId}#T`
+// グループ単位キー:
+//   予選リーグ `${categoryId}#L${groupIndex}` / リーグ決勝 `${categoryId}#F` / トーナメント `${categoryId}#T`
 function groupUnitKey(m: Match): string {
-  return m.type === 'league'
-    ? `${m.categoryId}#L${m.groupIndex ?? 0}`
-    : `${m.categoryId}#T`;
+  if (m.type === 'league') {
+    return m.phaseKey === PHASE_TYPES.LEAGUE_FINAL
+      ? `${m.categoryId}#F`
+      : `${m.categoryId}#L${m.groupIndex ?? 0}`;
+  }
+  return `${m.categoryId}#T`;
 }
 
 // グループ順（groupOrderMap[venueId]）を最優先に試合を並べ替える。
@@ -53,6 +57,94 @@ function sortMatchesByGroupOrder(matches: Match[], orderedKeys?: string[]): Matc
     if ((a.round || 0) !== (b.round || 0)) return (a.round || 0) - (b.round || 0);
     return (origIdx.get(a.id) ?? 0) - (origIdx.get(b.id) ?? 0);
   });
+}
+
+// コート内の対戦表（総当たり表・トーナメント表）をグループ実施順に並べて表示
+function VenueUnitTables({
+  venueMatches,
+  allMatches,
+  orderedKeys,
+  categories,
+  leagueGroups,
+  tournamentData,
+  highlightPlayerId,
+}: {
+  venueMatches: Match[];          // ユニット列挙・順序決定用（コート内の試合）
+  allMatches: Match[];            // 表描画用（BYE含む全試合）
+  orderedKeys?: string[];         // groupOrderMap[venueId]
+  categories: { id: string; label: string }[];
+  leagueGroups: Record<string, Player[][]>;
+  tournamentData: Record<string, TournamentData>;
+  highlightPlayerId?: string | null;
+}) {
+  // グループ実施順にユニット（グループ / リーグ決勝 / トーナメント）を列挙
+  const seen = new Set<string>();
+  const units: { key: string; sample: Match }[] = [];
+  for (const m of sortMatchesByGroupOrder(venueMatches, orderedKeys)) {
+    const k = groupUnitKey(m);
+    if (!seen.has(k)) {
+      seen.add(k);
+      units.push({ key: k, sample: m });
+    }
+  }
+  if (units.length === 0) return null;
+
+  return (
+    <div>
+      {units.map(({ key, sample }) => {
+        const catId = sample.categoryId;
+        const catLabel = categories.find(c => c.id === catId)?.label || '';
+
+        if (sample.type === 'tournament') {
+          const td = tournamentData[catId];
+          if (!td) return null;
+          const tMatches = allMatches.filter(m =>
+            m.categoryId === catId && m.type === 'tournament' && m.phaseKey === td.phaseKey
+          );
+          if (tMatches.length === 0) return null;
+          return (
+            <div key={key} className="mb-3">
+              <div className="text-[11px] font-semibold text-gray-300 mb-1">{catLabel} トーナメント</div>
+              <BracketView matches={tMatches} totalRounds={td.totalRounds} />
+            </div>
+          );
+        }
+
+        if (sample.phaseKey === PHASE_TYPES.LEAGUE_FINAL) {
+          const lfGroup = leagueGroups[`${catId}_final`]?.[0];
+          const lfMatches = allMatches.filter(m =>
+            m.categoryId === catId && m.type === 'league' && m.phaseKey === PHASE_TYPES.LEAGUE_FINAL
+          );
+          if (!lfGroup || lfMatches.length === 0) return null;
+          return (
+            <LeagueMatrix
+              key={key}
+              group={lfGroup as Player[]}
+              matches={lfMatches}
+              title={`${catLabel} リーグ決勝`}
+              highlightPlayerId={highlightPlayerId}
+            />
+          );
+        }
+
+        const gi = sample.groupIndex ?? 0;
+        const group = (leagueGroups[catId] || [])[gi];
+        if (!group) return null;
+        const gM = allMatches.filter(m =>
+          m.categoryId === catId && m.type === 'league' && m.phaseKey === sample.phaseKey && (m.groupIndex ?? 0) === gi
+        );
+        return (
+          <LeagueMatrix
+            key={key}
+            group={group as Player[]}
+            matches={gM}
+            title={`${catLabel} ${String.fromCharCode(65 + gi)}グループ`}
+            highlightPlayerId={highlightPlayerId}
+          />
+        );
+      })}
+    </div>
+  );
 }
 
 // ==========================================
@@ -2618,6 +2710,7 @@ function CourtGroupOrderPanel() {
     const [catId, suffix] = key.split('#');
     const label = categories.find(c => c.id === catId)?.label || catId;
     if (suffix === 'T') return `${label} トーナメント`;
+    if (suffix === 'F') return `${label} リーグ決勝`;
     return `${label} ${String.fromCharCode(65 + Number(suffix.slice(1)))}グループ`;
   };
 
@@ -4392,11 +4485,6 @@ function RefereePage() {
           const activeVM = allVenueMatches.filter(m => m.status === 'active');
           const sortedSchedule = [...completedVM, ...activeVM, ...pendingMatches];
 
-          // コート内のリーグ戦カテゴリ別の総当たり表
-          const leagueCatsInVenue = Array.from(new Set(
-            vMatches.filter(m => m.type === 'league').map(m => m.categoryId)
-          ));
-
           return (
             <aside
               className="lg:w-[360px] xl:w-[400px] flex-shrink-0 bg-white/[0.03] border border-white/[0.07] rounded-[10px] p-3 self-start lg:sticky lg:top-20"
@@ -4410,76 +4498,18 @@ function RefereePage() {
                 {venue?.name} 試合順・対戦表
               </div>
 
-              {/* 総当たり表（リーグ戦カテゴリ毎） */}
-              {leagueCatsInVenue.length > 0 && (
-                <div className="mb-3">
-                  <div className="text-[10px] font-bold text-gray-400 mb-2">総当たり表</div>
-                  {leagueCatsInVenue.map(catId => {
-                    const cat = categories.find(c => c.id === catId);
-                    // 予選リーグ
-                    const preGroups = leagueGroups[catId] || [];
-                    const preMatches = allMatches.filter(m =>
-                      m.categoryId === catId && m.type === 'league' && m.phaseKey === PHASE_TYPES.LEAGUE
-                    );
-                    // リーグ決勝
-                    const lfGroup = leagueGroups[`${catId}_final`]?.[0];
-                    const lfMatches = allMatches.filter(m =>
-                      m.categoryId === catId && m.type === 'league' && m.phaseKey === PHASE_TYPES.LEAGUE_FINAL
-                    );
-                    return (
-                      <div key={catId} className="mb-3">
-                        <div className="text-[10px] font-semibold text-gray-300 mb-1">
-                          {cat?.label}
-                        </div>
-                        {(preGroups as Player[][]).map((g, gi) => {
-                          const gM = preMatches.filter(m => m.groupIndex === gi);
-                          return (
-                            <LeagueMatrix
-                              key={gi}
-                              group={g}
-                              matches={gM}
-                              title={`${String.fromCharCode(65 + gi)}グループ`}
-                            />
-                          );
-                        })}
-                        {lfGroup && lfMatches.length > 0 && (
-                          <LeagueMatrix
-                            group={lfGroup as Player[]}
-                            matches={lfMatches}
-                            title="リーグ決勝"
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* トーナメント表（トーナメント戦カテゴリ毎） */}
-              {(() => {
-                const tournCatsInVenue = Array.from(new Set(
-                  vMatches.filter(m => m.type === 'tournament').map(m => m.categoryId)
-                )).filter(cid => tournamentData[cid]);
-                if (tournCatsInVenue.length === 0) return null;
-                return (
-                  <div className="mb-3">
-                    <div className="text-[10px] font-bold text-gray-400 mb-2">トーナメント表</div>
-                    {tournCatsInVenue.map(catId => {
-                      const cat = categories.find(c => c.id === catId);
-                      const tMatches = allMatches.filter(m => m.categoryId === catId && m.type === 'tournament');
-                      const td = tournamentData[catId];
-                      return (
-                        <div key={catId} className="mb-3">
-                          <div className="text-[10px] font-semibold text-gray-300 mb-1">
-                            {cat?.label}
-                          </div>
-                          <BracketView matches={tMatches} totalRounds={td.totalRounds} />
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
+              {/* 対戦表（グループ実施順に連動して表示） */}
+              <div className="mb-3">
+                <div className="text-[10px] font-bold text-gray-400 mb-2">対戦表（実施順）</div>
+                <VenueUnitTables
+                  venueMatches={allVenueMatches}
+                  allMatches={allMatches}
+                  orderedKeys={groupOrderMap[refereeVenue]}
+                  categories={categories}
+                  leagueGroups={leagueGroups}
+                  tournamentData={tournamentData}
+                />
+              </div>
 
               {/* 試合順（進行状況別） */}
               <div>
@@ -4862,10 +4892,6 @@ function SpectatorPage() {
         );
         const sortedVenueMatches = [...completedVM, ...activeVM, ...pendingVM];
 
-        // コート内のリーグ戦カテゴリ（総当たり表用）
-        const leagueCatsInVenue = Array.from(new Set(
-          vAllMatches.filter(m => m.type === 'league').map(m => m.categoryId)
-        ));
         // コート内の選手一覧（注目選手セレクタ用）
         const seenP = new Set<string>();
         const venuePlayers: { id: string; name: string; nameKana?: string; dojo?: string }[] = [];
@@ -4953,76 +4979,19 @@ function SpectatorPage() {
               </div>
             )}
 
-            {/* 総当たり表（リーグ戦カテゴリ毎） */}
-            {leagueCatsInVenue.length > 0 && (
-              <div className="mb-3">
-                <div className="text-xs font-bold text-white mb-2">総当たり表</div>
-                {leagueCatsInVenue.map(catId => {
-                  const cat = categories.find(c => c.id === catId);
-                  const preGroups = leagueGroups[catId] || [];
-                  const preMatches = allMatches.filter(m =>
-                    m.categoryId === catId && m.type === 'league' && m.phaseKey === PHASE_TYPES.LEAGUE
-                  );
-                  const lfGroup = leagueGroups[`${catId}_final`]?.[0];
-                  const lfMatches = allMatches.filter(m =>
-                    m.categoryId === catId && m.type === 'league' && m.phaseKey === PHASE_TYPES.LEAGUE_FINAL
-                  );
-                  return (
-                    <div key={catId} className="mb-3">
-                      <div className="text-[11px] font-semibold text-gray-300 mb-1">
-                        {cat?.label}
-                      </div>
-                      {(preGroups as Player[][]).map((g, gi) => {
-                        const gM = preMatches.filter(m => m.groupIndex === gi);
-                        return (
-                          <LeagueMatrix
-                            key={gi}
-                            group={g}
-                            matches={gM}
-                            title={`${String.fromCharCode(65 + gi)}グループ`}
-                            highlightPlayerId={highlightPlayerId}
-                          />
-                        );
-                      })}
-                      {lfGroup && lfMatches.length > 0 && (
-                        <LeagueMatrix
-                          group={lfGroup as Player[]}
-                          matches={lfMatches}
-                          title="リーグ決勝"
-                          highlightPlayerId={highlightPlayerId}
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* トーナメント表（トーナメント戦カテゴリ毎） */}
-            {(() => {
-              const tournCatsInVenue = Array.from(new Set(
-                vAllMatches.filter(m => m.type === 'tournament').map(m => m.categoryId)
-              )).filter(cid => tournamentData[cid]);
-              if (tournCatsInVenue.length === 0) return null;
-              return (
-                <div className="mb-3">
-                  <div className="text-xs font-bold text-white mb-2">トーナメント表</div>
-                  {tournCatsInVenue.map(catId => {
-                    const cat = categories.find(c => c.id === catId);
-                    const tMatches = allMatches.filter(m => m.categoryId === catId && m.type === 'tournament');
-                    const td = tournamentData[catId];
-                    return (
-                      <div key={catId} className="mb-3">
-                        <div className="text-[11px] font-semibold text-gray-300 mb-1">
-                          {cat?.label}
-                        </div>
-                        <BracketView matches={tMatches} totalRounds={td.totalRounds} />
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })()}
+            {/* 対戦表（グループ実施順に連動して表示） */}
+            <div className="mb-3">
+              <div className="text-xs font-bold text-white mb-2">対戦表（実施順）</div>
+              <VenueUnitTables
+                venueMatches={vAllMatches}
+                allMatches={allMatches}
+                orderedKeys={groupOrderMap[specVenue]}
+                categories={categories}
+                leagueGroups={leagueGroups}
+                tournamentData={tournamentData}
+                highlightPlayerId={highlightPlayerId}
+              />
+            </div>
 
             {/* 試合順（完了→進行中→待機の順） */}
             <div>

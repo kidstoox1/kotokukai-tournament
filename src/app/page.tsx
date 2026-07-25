@@ -3941,8 +3941,8 @@ function RefereePage({ fixedVenue }: { fixedVenue?: string }) {
   const autoOpenMatchId = useRef<string | null>(null);
   // 試合順序のカスタム並べ替え（コートごと）
   const [matchOrderMap, setMatchOrderMap] = useState<Record<string, string[]>>({});
-  // サイドパネル（総当たり表・試合順リスト）の表示制御
-  const [showSchedulePanel, setShowSchedulePanel] = useState(true);
+  // 表示タブ: 試合入力 / 試合順・対戦表
+  const [refereeTab, setRefereeTab] = useState<'input' | 'schedule'>('input');
   // グループ/カテゴリ終了時のポップアップ通知
   const [groupCompletionNotice, setGroupCompletionNotice] = useState<{
     completedLabel: string;
@@ -4129,21 +4129,30 @@ function RefereePage({ fixedVenue }: { fixedVenue?: string }) {
             </button>
           ))
         )}
-        <button
-          onClick={() => setShowSchedulePanel(p => !p)}
-          className="hidden lg:inline-flex px-3 py-2 rounded-md text-[11px] font-semibold cursor-pointer border-none"
-          style={{
-            background: showSchedulePanel ? 'rgba(185,28,28,0.15)' : 'rgba(255,255,255,0.06)',
-            color: showSchedulePanel ? '#FCA5A5' : '#D6DCE8',
-          }}
-          title="総当たり表・試合順パネルの表示/非表示"
-        >
-          {showSchedulePanel ? '◀ 試合順' : '試合順 ▶'}
-        </button>
       </div>
 
-      <div className={`flex flex-col ${showSchedulePanel ? 'lg:flex-row' : ''} gap-3`}>
-        <div className="flex-1 min-w-0">
+      {/* 表示タブ切替: 試合入力 / 試合順・対戦表 */}
+      <div className="flex gap-1 mb-4">
+        {([
+          { key: 'input', label: '✏️ 試合入力' },
+          { key: 'schedule', label: '📋 試合順・対戦表' },
+        ] as const).map(t => (
+          <button
+            key={t.key}
+            onClick={() => setRefereeTab(t.key)}
+            className="flex-1 py-2.5 rounded-md text-[13px] font-bold cursor-pointer border-none text-center"
+            style={{
+              background: refereeTab === t.key ? (venue?.color || '#B91C1C') : 'rgba(255,255,255,0.06)',
+              color: refereeTab === t.key ? '#FFFFFF' : '#9CA3AF',
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className={refereeTab === 'input' ? '' : 'hidden'}>
+        <div>
 
       {/* 現在の試合 */}
       <div
@@ -4486,8 +4495,11 @@ function RefereePage({ fixedVenue }: { fixedVenue?: string }) {
       })()}
 
         </div>
-        {/* サイドパネル: 試合順・総当たり表 */}
-        {showSchedulePanel && (() => {
+      </div>
+
+      {/* 試合順・対戦表タブ */}
+      <div className={refereeTab === 'schedule' ? '' : 'hidden'}>
+        {(() => {
           // コート内の全試合（BYE除く、完了・進行中・待機）
           const allVenueMatches = vMatches.filter(m => !m.isBye);
           // 表示順: 完了 → 進行中 → 待機（待機はpendingMatchesの並び順）
@@ -4496,10 +4508,7 @@ function RefereePage({ fixedVenue }: { fixedVenue?: string }) {
           const sortedSchedule = [...completedVM, ...activeVM, ...pendingMatches];
 
           return (
-            <aside
-              className="lg:w-[360px] xl:w-[400px] flex-shrink-0 bg-white/[0.03] border border-white/[0.07] rounded-[10px] p-3 self-start lg:sticky lg:top-20"
-              style={{ maxHeight: 'calc(100vh - 120px)', overflowY: 'auto' }}
-            >
+            <div className="bg-white/[0.03] border border-white/[0.07] rounded-[10px] p-3">
               <div className="text-sm font-bold text-white mb-2 flex items-center gap-2">
                 <span
                   className="w-2 h-2 rounded-full inline-block"
@@ -4537,7 +4546,7 @@ function RefereePage({ fixedVenue }: { fixedVenue?: string }) {
                   />
                 )}
               </div>
-            </aside>
+            </div>
           );
         })()}
       </div>

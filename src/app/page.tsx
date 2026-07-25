@@ -4108,32 +4108,9 @@ function RefereePage({ fixedVenue }: { fixedVenue?: string }) {
 
   return (
     <div>
-      {/* コート選択（コート固定URLの場合は固定表示のみ） */}
-      <div className="flex gap-1.5 mb-4 items-center">
-        {fixedVenue ? (
-          <div
-            className="flex-1 py-2.5 rounded-md text-[13px] font-bold text-white text-center"
-            style={{ background: venue?.color || '#B91C1C' }}
-          >
-            {venue?.name} 専用
-          </div>
-        ) : (
-          VENUES.map(v => (
-            <button
-              key={v.id}
-              className="flex-1 py-2.5 rounded-md text-[13px] font-semibold text-white cursor-pointer border-none text-center"
-              style={{ background: v.id === refereeVenue ? v.color : '#374151' }}
-              onClick={() => setRefereeVenue(v.id)}
-            >
-              {v.name}
-            </button>
-          ))
-        )}
-      </div>
-
-      {/* 表示タブ切替: 試合入力 / 試合順・対戦表 */}
-      <div className="flex gap-1 mb-4">
-        {([
+      {/* コート選択 + 表示タブ */}
+      {(() => {
+        const tabButtons = ([
           { key: 'input', label: '✏️ 試合入力' },
           { key: 'schedule', label: '📋 試合順・対戦表' },
         ] as const).map(t => (
@@ -4148,8 +4125,44 @@ function RefereePage({ fixedVenue }: { fixedVenue?: string }) {
           >
             {t.label}
           </button>
-        ))}
-      </div>
+        ));
+
+        if (fixedVenue) {
+          // コート固定URL: バッジとタブを1行にまとめる
+          return (
+            <div className="flex gap-1.5 mb-4 items-center">
+              <div
+                className="px-6 py-2.5 rounded-md text-[13px] font-bold text-white text-center flex-shrink-0"
+                style={{ background: venue?.color || '#B91C1C' }}
+              >
+                {venue?.name} 専用
+              </div>
+              {tabButtons}
+            </div>
+          );
+        }
+
+        // 通常URL: コート選択行 + タブ行
+        return (
+          <>
+            <div className="flex gap-1.5 mb-4 items-center">
+              {VENUES.map(v => (
+                <button
+                  key={v.id}
+                  className="flex-1 py-2.5 rounded-md text-[13px] font-semibold text-white cursor-pointer border-none text-center"
+                  style={{ background: v.id === refereeVenue ? v.color : '#374151' }}
+                  onClick={() => setRefereeVenue(v.id)}
+                >
+                  {v.name}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-1 mb-4">
+              {tabButtons}
+            </div>
+          </>
+        );
+      })()}
 
       <div className={refereeTab === 'input' ? '' : 'hidden'}>
         <div>

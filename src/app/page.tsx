@@ -4065,16 +4065,19 @@ function RefereePage() {
                 ▼
               </button>
             </div>
-            <button
-              className="px-2.5 py-[5px] rounded-md text-white text-[11px] font-semibold cursor-pointer border-none flex-shrink-0"
-              style={{ background: activeMatch ? '#4B5563' : (venue?.color || '#B91C1C') }}
-              onClick={() => {
-                autoOpenMatchId.current = m.id;
-                activateMatch(m.id);
-              }}
-            >
-              {activeMatch ? '入替' : '開始'}
-            </button>
+            {/* 進行中の試合がある間は次の試合を開始できない（入替機能は廃止） */}
+            {!activeMatch && (
+              <button
+                className="px-2.5 py-[5px] rounded-md text-white text-[11px] font-semibold cursor-pointer border-none flex-shrink-0"
+                style={{ background: venue?.color || '#B91C1C' }}
+                onClick={() => {
+                  autoOpenMatchId.current = m.id;
+                  activateMatch(m.id);
+                }}
+              >
+                開始
+              </button>
+            )}
           </div>
         ))}
         {pendingMatches.length === 0 && <div className="text-gray-500 text-xs">待機中の試合なし</div>}

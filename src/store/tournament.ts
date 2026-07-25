@@ -28,6 +28,9 @@ interface TournamentState {
   initialized: boolean;
   teams: Team[];
   allTeamMatches: TeamMatch[];
+  // コート別のグループ実施順（venueId -> グループ単位キーの配列）
+  // キー形式: リーグ `${categoryId}#L${groupIndex}` / トーナメント `${categoryId}#T`
+  groupOrderMap: Record<string, string[]>;
 
   // --- 算出値 ---
   getActiveCats: () => (Category & {
@@ -72,6 +75,7 @@ interface TournamentState {
   deactivateMatch: (matchId: string) => void;
   startFinals: (venueId: string) => void;
   setFinalsVenue: (venueId: string) => void;
+  setGroupOrder: (venueId: string, orderedKeys: string[]) => void;
 
   // --- 団体戦アクション ---
   addTeam: (team: Team) => void;
@@ -100,6 +104,7 @@ export const useTournamentStore = create<TournamentState>()(
   initialized: false,
   teams: [],
   allTeamMatches: [],
+  groupOrderMap: {},
 
   // --- 算出値 ---
   getActiveCats: () => {
@@ -239,6 +244,7 @@ export const useTournamentStore = create<TournamentState>()(
       venueAssignments: defaultAssigns,
       teams: [],
       allTeamMatches: [],
+      groupOrderMap: {},
     });
   },
 
@@ -262,6 +268,7 @@ export const useTournamentStore = create<TournamentState>()(
       venueAssignments: defaultAssigns,
       teams: [],
       allTeamMatches: [],
+      groupOrderMap: {},
     });
   },
 
@@ -281,6 +288,7 @@ export const useTournamentStore = create<TournamentState>()(
       finalsVenueId: null,
       teams: [],
       allTeamMatches: [],
+      groupOrderMap: {},
     });
   },
 
@@ -560,6 +568,10 @@ export const useTournamentStore = create<TournamentState>()(
     set({ finalsVenueId: venueId });
   },
 
+  setGroupOrder: (venueId, orderedKeys) => {
+    set(s => ({ groupOrderMap: { ...s.groupOrderMap, [venueId]: orderedKeys } }));
+  },
+
   startFinals: (venueId) => {
     const { allMatches, tournamentData, catPhases } = get();
     const updated = allMatches.map(m => {
@@ -755,6 +767,7 @@ export const useTournamentStore = create<TournamentState>()(
         initialized: state.initialized,
         teams: state.teams,
         allTeamMatches: state.allTeamMatches,
+        groupOrderMap: state.groupOrderMap,
       }),
     }
   )

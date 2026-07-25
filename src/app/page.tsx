@@ -30,6 +30,32 @@ type PageType = 'admin' | 'referee' | 'monitor' | 'spectator';
 type RoleType = 'admin' | 'recorder' | 'viewer';
 
 // ==========================================
+// コート別グループ実施順ヘルパー
+// ==========================================
+// グループ単位キー: リーグ `${categoryId}#L${groupIndex}` / トーナメント `${categoryId}#T`
+function groupUnitKey(m: Match): string {
+  return m.type === 'league'
+    ? `${m.categoryId}#L${m.groupIndex ?? 0}`
+    : `${m.categoryId}#T`;
+}
+
+// グループ順（groupOrderMap[venueId]）を最優先に試合を並べ替える。
+// 順序未指定のグループ同士・同一グループ内は従来順
+// （3位決定戦 → round → 生成時の並び）を維持する。
+function sortMatchesByGroupOrder(matches: Match[], orderedKeys?: string[]): Match[] {
+  const orderIdx = new Map((orderedKeys || []).map((k, i) => [k, i]));
+  const origIdx = new Map(matches.map((m, i) => [m.id, i]));
+  return [...matches].sort((a, b) => {
+    const ia = orderIdx.get(groupUnitKey(a)) ?? Number.MAX_SAFE_INTEGER;
+    const ib = orderIdx.get(groupUnitKey(b)) ?? Number.MAX_SAFE_INTEGER;
+    if (ia !== ib) return ia - ib;
+    if (a.isThirdPlace !== b.isThirdPlace) return a.isThirdPlace ? -1 : 1;
+    if ((a.round || 0) !== (b.round || 0)) return (a.round || 0) - (b.round || 0);
+    return (origIdx.get(a.id) ?? 0) - (origIdx.get(b.id) ?? 0);
+  });
+}
+
+// ==========================================
 // 共通UIコンポーネント
 // ==========================================
 
@@ -2561,6 +2587,111 @@ function CategoryManagePanel() {
 }
 
 // ==========================================
+// コート別 グループ実施順パネル（管理画面用）
+// ==========================================
+function CourtGroupOrderPanel() {
+  const { categories, allMatches, venueAssignments, groupOrderMap, setGroupOrder } = useTournamentStore();
+
+  // コートごとに「残り試合のあるグループ単位」を現在の実施順で集める
+  const venueUnits = VENUES.map(v => {
+    const vMatches = allMatches.filter(m => !m.isBye && venueAssignments[m.categoryId] === v.id);
+    const remainCount = new Map<string, number>();
+    const defaultOrder: string[] = [];
+    for (const m of vMatches) {
+      const k = groupUnitKey(m);
+      if (!defaultOrder.includes(k)) defaultOrder.push(k);
+      if (m.status !== 'completed') remainCount.set(k, (remainCount.get(k) || 0) + 1);
+    }
+    // 全試合消化済みのグループは並べ替え対象から外す
+    const keys = defaultOrder.filter(k => (remainCount.get(k) || 0) > 0);
+    const stored = groupOrderMap[v.id] || [];
+    const effective = [
+      ...stored.filter(k => keys.includes(k)),
+      ...keys.filter(k => !stored.includes(k)),
+    ];
+    return { venue: v, effective, remainCount };
+  }).filter(x => x.effective.length > 0);
+
+  if (venueUnits.length === 0) return null;
+
+  const unitLabel = (key: string) => {
+    const [catId, suffix] = key.split('#');
+    const label = categories.find(c => c.id === catId)?.label || catId;
+    if (suffix === 'T') return `${label} トーナメント`;
+    return `${label} ${String.fromCharCode(65 + Number(suffix.slice(1)))}グループ`;
+  };
+
+  const move = (venueId: string, effective: string[], idx: number, dir: -1 | 1) => {
+    const ni = idx + dir;
+    if (ni < 0 || ni >= effective.length) return;
+    const next = [...effective];
+    [next[idx], next[ni]] = [next[ni], next[idx]];
+    setGroupOrder(venueId, next);
+  };
+
+  return (
+    <div className="bg-white/[0.03] border border-white/[0.07] rounded-[10px] p-4 mb-3">
+      <div className="text-sm font-bold text-white mb-1">コート別 グループ実施順</div>
+      <div className="text-[11px] text-gray-400 mb-3">
+        ▲▼で各コートのグループ実施順を変更できます。変更は記録係・モニター・観覧の試合順に即時反映されます
+      </div>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(250px,1fr))] gap-2.5">
+        {venueUnits.map(({ venue: v, effective, remainCount }) => (
+          <div
+            key={v.id}
+            className="rounded-lg p-2.5"
+            style={{ background: `${v.color}08`, border: `1px solid ${v.color}30` }}
+          >
+            <div className="text-xs font-bold mb-2 flex items-center gap-1.5" style={{ color: v.color }}>
+              <span className="w-2 h-2 rounded-full inline-block" style={{ background: v.color }} />
+              {v.name}
+            </div>
+            {effective.map((key, idx) => (
+              <div
+                key={key}
+                className="flex items-center gap-1.5 px-2 py-1.5 mb-1 rounded-md bg-white/[0.03] border border-white/[0.06]"
+              >
+                <span className="text-[10px] font-bold w-4 text-center flex-shrink-0" style={{ color: v.color }}>
+                  {idx + 1}
+                </span>
+                <span className="flex-1 text-[11px] font-semibold text-white leading-tight min-w-0">
+                  {unitLabel(key)}
+                  <span className="ml-1 text-[9px] text-gray-500 font-normal whitespace-nowrap">
+                    残{remainCount.get(key) || 0}試合
+                  </span>
+                </span>
+                <button
+                  className="w-6 h-5 rounded text-[10px] font-bold cursor-pointer border-none flex items-center justify-center flex-shrink-0"
+                  style={{
+                    background: idx > 0 ? 'rgba(255,255,255,0.08)' : 'transparent',
+                    color: idx > 0 ? '#D6DCE8' : '#374151',
+                  }}
+                  onClick={() => move(v.id, effective, idx, -1)}
+                  disabled={idx === 0}
+                >
+                  ▲
+                </button>
+                <button
+                  className="w-6 h-5 rounded text-[10px] font-bold cursor-pointer border-none flex items-center justify-center flex-shrink-0"
+                  style={{
+                    background: idx < effective.length - 1 ? 'rgba(255,255,255,0.08)' : 'transparent',
+                    color: idx < effective.length - 1 ? '#D6DCE8' : '#374151',
+                  }}
+                  onClick={() => move(v.id, effective, idx, 1)}
+                  disabled={idx >= effective.length - 1}
+                >
+                  ▼
+                </button>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
 // 管理ページ
 // ==========================================
 function AdminPage() {
@@ -2871,6 +3002,9 @@ function AdminPage() {
           <ProgressBar pct={progressPct} color="#F59E0B" />
         </div>
       )}
+
+      {/* コート別 グループ実施順の並べ替え */}
+      <CourtGroupOrderPanel />
 
       {/* カテゴリ一覧テーブル */}
       {activeCats.length > 0 && (
@@ -3700,6 +3834,7 @@ function RefereePage() {
     catPhases,
     tournamentData,
     leagueGroups,
+    groupOrderMap,
     activateMatch,
     deactivateMatch,
     activateTeamMatch,
@@ -3732,15 +3867,13 @@ function RefereePage() {
     )
   );
   const activeMatch = vMatches.find(m => m.status === 'active');
-  const pendingMatchesDefault = vMatches
-    .filter(m => m.status === 'pending' && m.playerA && m.playerB)
-    // 決勝待ち状態の決勝戦は通常キューから除外（管理画面から開始する）
-    .filter(m => !(catPhases[m.categoryId] === PHASE_TYPES.AWAITING_FINALS && isFinalMatch(m, tournamentData) && !m.venueId))
-    .sort((a, b) => {
-      if (a.isThirdPlace && !b.isThirdPlace) return -1;
-      if (!a.isThirdPlace && b.isThirdPlace) return 1;
-      return (a.round || 0) - (b.round || 0);
-    });
+  const pendingMatchesDefault = sortMatchesByGroupOrder(
+    vMatches
+      .filter(m => m.status === 'pending' && m.playerA && m.playerB)
+      // 決勝待ち状態の決勝戦は通常キューから除外（管理画面から開始する）
+      .filter(m => !(catPhases[m.categoryId] === PHASE_TYPES.AWAITING_FINALS && isFinalMatch(m, tournamentData) && !m.venueId)),
+    groupOrderMap[refereeVenue],
+  );
   // カスタム順序が設定されている場合はそれに従う
   const customOrder = matchOrderMap[refereeVenue];
   const pendingMatches = customOrder
@@ -3827,14 +3960,12 @@ function RefereePage() {
     }
 
     // 次の試合(=次のグループ/段)を探す
-    const afterPending = afterVMatches
-      .filter(x => x.status === 'pending' && x.playerA && x.playerB)
-      .filter(x => !(after.catPhases[x.categoryId] === PHASE_TYPES.AWAITING_FINALS && isFinalMatch(x, after.tournamentData) && !x.venueId))
-      .sort((a, b) => {
-        if (a.isThirdPlace && !b.isThirdPlace) return -1;
-        if (!a.isThirdPlace && b.isThirdPlace) return 1;
-        return (a.round || 0) - (b.round || 0);
-      });
+    const afterPending = sortMatchesByGroupOrder(
+      afterVMatches
+        .filter(x => x.status === 'pending' && x.playerA && x.playerB)
+        .filter(x => !(after.catPhases[x.categoryId] === PHASE_TYPES.AWAITING_FINALS && isFinalMatch(x, after.tournamentData) && !x.venueId)),
+      after.groupOrderMap[refereeVenue],
+    );
     const customOrder2 = matchOrderMap[refereeVenue];
     const sortedPending = customOrder2
       ? [...afterPending].sort((a, b) => {
@@ -4462,6 +4593,7 @@ function MonitorPage() {
     venueAssignments,
     catPhases,
     tournamentData,
+    groupOrderMap,
     getTotalMatches,
     getCompletedMatches,
     getProgressPct,
@@ -4492,14 +4624,12 @@ function MonitorPage() {
           const vM = allMatches.filter(m => vCats.includes(m.categoryId) && !m.isBye);
           const active = vM.find(m => m.status === 'active');
           // 進行中の試合が無い場合は「次の試合」（記録係画面トップと同じ試合）を表示
-          const nextPending = !active ? vM
-            .filter(m => m.status === 'pending' && m.playerA && m.playerB)
-            .filter(m => !(catPhases[m.categoryId] === PHASE_TYPES.AWAITING_FINALS && isFinalMatch(m, tournamentData) && !m.venueId))
-            .sort((a, b) => {
-              if (a.isThirdPlace && !b.isThirdPlace) return -1;
-              if (!a.isThirdPlace && b.isThirdPlace) return 1;
-              return (a.round || 0) - (b.round || 0);
-            })[0] : null;
+          const nextPending = !active ? sortMatchesByGroupOrder(
+            vM
+              .filter(m => m.status === 'pending' && m.playerA && m.playerB)
+              .filter(m => !(catPhases[m.categoryId] === PHASE_TYPES.AWAITING_FINALS && isFinalMatch(m, tournamentData) && !m.venueId)),
+            groupOrderMap[venue.id],
+          )[0] : null;
           const display = active || nextPending;
           const done = vM.filter(m => m.status === 'completed').length;
           const total = vM.length;
@@ -4593,6 +4723,7 @@ function SpectatorPage() {
     catPhases,
     catAdvanceCounts,
     tournamentData,
+    groupOrderMap,
     getActiveCats,
   } = useTournamentStore();
 
@@ -4627,14 +4758,12 @@ function SpectatorPage() {
               .map(([c]) => c);
             const vM = allMatches.filter(m => vCats.includes(m.categoryId) && !m.isBye);
             const active = vM.find(m => m.status === 'active');
-            const nextPending = !active ? vM
-              .filter(m => m.status === 'pending' && m.playerA && m.playerB)
-              .filter(m => !(catPhases[m.categoryId] === PHASE_TYPES.AWAITING_FINALS && isFinalMatch(m, tournamentData) && !m.venueId))
-              .sort((a, b) => {
-                if (a.isThirdPlace && !b.isThirdPlace) return -1;
-                if (!a.isThirdPlace && b.isThirdPlace) return 1;
-                return (a.round || 0) - (b.round || 0);
-              })[0] : null;
+            const nextPending = !active ? sortMatchesByGroupOrder(
+              vM
+                .filter(m => m.status === 'pending' && m.playerA && m.playerB)
+                .filter(m => !(catPhases[m.categoryId] === PHASE_TYPES.AWAITING_FINALS && isFinalMatch(m, tournamentData) && !m.venueId)),
+              groupOrderMap[v.id],
+            )[0] : null;
             const display = active || nextPending;
             return { v, display, isActive: !!active, hasAnyMatch: vM.length > 0 };
           });
@@ -4725,14 +4854,12 @@ function SpectatorPage() {
         );
         const completedVM = vAllMatches.filter(m => m.status === 'completed');
         const activeVM = vAllMatches.filter(m => m.status === 'active');
-        const pendingVM = vAllMatches
-          .filter(m => m.status === 'pending' && m.playerA && m.playerB)
-          .filter(m => !(catPhases[m.categoryId] === PHASE_TYPES.AWAITING_FINALS && isFinalMatch(m, tournamentData) && !m.venueId))
-          .sort((a, b) => {
-            if (a.isThirdPlace && !b.isThirdPlace) return -1;
-            if (!a.isThirdPlace && b.isThirdPlace) return 1;
-            return (a.round || 0) - (b.round || 0);
-          });
+        const pendingVM = sortMatchesByGroupOrder(
+          vAllMatches
+            .filter(m => m.status === 'pending' && m.playerA && m.playerB)
+            .filter(m => !(catPhases[m.categoryId] === PHASE_TYPES.AWAITING_FINALS && isFinalMatch(m, tournamentData) && !m.venueId)),
+          groupOrderMap[specVenue],
+        );
         const sortedVenueMatches = [...completedVM, ...activeVM, ...pendingVM];
 
         // コート内のリーグ戦カテゴリ（総当たり表用）

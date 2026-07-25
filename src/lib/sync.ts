@@ -15,6 +15,7 @@ const STATE_KEYS = [
   'catPhases', 'venueAssignments', 'tournamentData',
   'catStartFormats', 'catAdvanceCounts', 'catThirdPlace',
   'finalsVenueId', 'initialized', 'teams', 'allTeamMatches',
+  'groupOrderMap',
 ] as const;
 
 // 自分が最後に保存したタイムスタンプ（自分の更新をスキップするため）

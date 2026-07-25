@@ -5170,7 +5170,41 @@ function TournamentApp({ role = 'admin', defaultCourt }: { role?: RoleType; defa
   const [page, setPage] = useState<PageType>(initialPage);
   const [hydrated, setHydrated] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'connecting' | 'connected' | 'offline'>('connecting');
+  // 新しいバージョンがデプロイされたかどうか（更新案内バナー用）
+  const [updateAvailable, setUpdateAvailable] = useState(false);
   const isRemoteUpdate = useRef(false);
+
+  // --- バージョン更新チェック ---
+  // 自分に埋め込まれたビルド版数と /api/version（サーバーの最新版数）を比較し、
+  // 異なれば更新案内バナーを表示する。60秒間隔 + 画面復帰時にチェック。
+  useEffect(() => {
+    const current = process.env.NEXT_PUBLIC_BUILD_VERSION;
+    if (!current) return;
+    let stopped = false;
+
+    const check = async () => {
+      try {
+        const res = await fetch('/api/version', { cache: 'no-store' });
+        const data = await res.json();
+        if (!stopped && data?.version && data.version !== current) {
+          setUpdateAvailable(true);
+        }
+      } catch {
+        // オフライン等は無視（次回チェックで再試行）
+      }
+    };
+
+    const interval = setInterval(check, 60_000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') check();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      stopped = true;
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
 
   // --- Firestore リアルタイム同期 ---
   useEffect(() => {
@@ -5303,6 +5337,28 @@ function TournamentApp({ role = 'admin', defaultCourt }: { role?: RoleType; defa
         {page === 'monitor' && <MonitorPage />}
         {page === 'spectator' && <SpectatorPage />}
       </main>
+
+      {/* バージョン更新案内バナー */}
+      {updateAvailable && (
+        <div
+          className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[300] flex items-center gap-3 px-4 py-3 rounded-xl w-[92%] max-w-md"
+          style={{
+            background: '#1E3A5F',
+            border: '1.5px solid #3B82F6',
+            boxShadow: '0 4px 24px rgba(59,130,246,0.35)',
+          }}
+        >
+          <span className="text-[13px] text-white font-semibold flex-1">
+            🔄 新しいバージョンが公開されました
+          </span>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 rounded-lg bg-blue-500 text-white text-xs font-bold border-none cursor-pointer flex-shrink-0"
+          >
+            更新する
+          </button>
+        </div>
+      )}
     </div>
   );
 }

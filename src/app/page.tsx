@@ -1937,12 +1937,14 @@ function normalizeGrade(raw: string): string {
 }
 
 function CsvImportPanel() {
-  const { categories, importPlayers } = useTournamentStore();
+  const { categories, importPlayers, addCategory } = useTournamentStore();
   const [csvText, setCsvText] = useState('');
   const [preview, setPreview] = useState<{ name: string; nameKana: string; grade: string; gender: string; dojo: string; catId: string; catLabel: string; error: string }[]>([]);
-  const [columnMap, setColumnMap] = useState<{ name: number; nameKana: number; grade: number; gender: number; dojo: number }>({ name: 0, nameKana: 1, grade: 2, gender: 3, dojo: 4 });
+  const [columnMap, setColumnMap] = useState<{ name: number; nameKana: number; grade: number; gender: number; dojo: number; group: number }>({ name: 0, nameKana: 1, grade: 2, gender: 3, dojo: 4, group: -1 });
   const [headers, setHeaders] = useState<string[]>([]);
   const [step, setStep] = useState<'upload' | 'map' | 'preview'>('upload');
+  // カテゴリの分け方: 学年・性別から自動分類 or 指定列（班・組など）の値ごと
+  const [splitMode, setSplitMode] = useState<'grade' | 'column'>('grade');
 
   // CSVパース
   const parseCSV = (text: string): string[][] => {
@@ -1981,15 +1983,18 @@ function CsvImportPanel() {
         setHeaders(rows[0]);
         // 自動マッピング（ヘッダー名から推定）
         const h = rows[0].map(s => s.toLowerCase());
-        const autoMap = { ...columnMap };
+        const autoMap = { ...columnMap, group: -1 };
         h.forEach((col, i) => {
           if (/^(氏名|名前|選手名|name)/.test(col)) autoMap.name = i;
           else if (/^(ふりがな|フリガナ|かな|カナ|kana|読み)/.test(col)) autoMap.nameKana = i;
           else if (/^(学年|grade|年齢|クラス|部門)/.test(col)) autoMap.grade = i;
           else if (/^(性別|gender|sex)/.test(col)) autoMap.gender = i;
           else if (/^(道場|所属|団体|dojo|club|チーム)/.test(col)) autoMap.dojo = i;
+          else if (/^(班|組$|ブロック|グループ|group)/.test(col)) autoMap.group = i;
         });
         setColumnMap(autoMap);
+        // 班・組の列が見つかった場合は「列の値で分ける」モードを自動選択
+        setSplitMode(autoMap.group >= 0 ? 'column' : 'grade');
         setStep('map');
       }
     };
@@ -2009,11 +2014,25 @@ function CsvImportPanel() {
       const genderRaw = row[columnMap.gender] || '';
       const dojo = row[columnMap.dojo] || '';
 
-      const grade = normalizeGrade(gradeRaw);
-      const gender = normalizeGender(genderRaw);
-      const key = `${grade}_${gender}`;
-      const catId = GRADE_GENDER_TO_CAT[key] || '';
-      const cat = categories.find(c => c.id === catId);
+      let catId = '';
+      let catLabel = '';
+      let error = '';
+
+      if (splitMode === 'column') {
+        // 指定列（班・組など）の値ごとにカテゴリ分け
+        const groupVal = (columnMap.group >= 0 ? row[columnMap.group] || '' : '').trim();
+        catId = groupVal ? `custom_${groupVal}` : '';
+        catLabel = groupVal;
+        error = !name ? '氏名なし' : !groupVal ? '組分け列が空' : '';
+      } else {
+        const grade = normalizeGrade(gradeRaw);
+        const gender = normalizeGender(genderRaw);
+        const key = `${grade}_${gender}`;
+        catId = GRADE_GENDER_TO_CAT[key] || '';
+        const cat = categories.find(c => c.id === catId);
+        catLabel = cat?.label || '';
+        error = !name ? '氏名なし' : !catId ? `カテゴリ不明 (${grade}/${gender})` : '';
+      }
 
       return {
         name,
@@ -2022,8 +2041,8 @@ function CsvImportPanel() {
         gender: genderRaw,
         dojo,
         catId,
-        catLabel: cat?.label || '',
-        error: !name ? '氏名なし' : !catId ? `カテゴリ不明 (${grade}/${gender})` : '',
+        catLabel,
+        error,
       };
     }).filter(r => r.name); // 空行除外
 
@@ -2034,6 +2053,28 @@ function CsvImportPanel() {
   // インポート実行
   const doImport = () => {
     const valid = preview.filter(r => !r.error && r.catId);
+
+    // 列の値で分けるモード: 班・組ごとのカスタムカテゴリを自動作成
+    if (splitMode === 'column') {
+      const groupLabels = Array.from(new Set(valid.map(r => r.catLabel)))
+        .sort((a, b) => a.localeCompare(b, 'ja', { numeric: true }));
+      groupLabels.forEach(label => {
+        const catId = `custom_${label}`;
+        const exists = useTournamentStore.getState().categories.some(c => c.id === catId);
+        if (!exists) {
+          addCategory({
+            id: catId,
+            label,
+            group: 'カスタム',
+            gender: 'mixed',
+            menType: 'なし',
+            session: 'am',
+            isTeam: false,
+          });
+        }
+      });
+    }
+
     const players = valid.map(r => ({
       id: generateId(),
       name: r.name,
@@ -2068,7 +2109,8 @@ function CsvImportPanel() {
         <div>
           <div className="text-[11px] text-gray-400 mb-3">
             Googleフォームから書き出したCSVファイルを選択してください。<br />
-            必要な列: <span className="text-gray-300">氏名、ふりがな、学年、性別、所属道場</span>
+            必要な列: <span className="text-gray-300">氏名、ふりがな、学年、性別、所属道場</span><br />
+            「班」「組」などの列があれば、その値ごとにカテゴリ分けすることもできます（自動検出）
           </div>
           <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-md bg-blue-600 text-white text-xs font-semibold cursor-pointer border-none">
             CSVファイルを選択
@@ -2091,6 +2133,54 @@ function CsvImportPanel() {
           <div className="text-[11px] text-gray-400 mb-3">
             CSVの列とデータ項目を対応付けてください（自動推定済み）
           </div>
+
+          {/* カテゴリの分け方 */}
+          <div className="mb-4 p-3 rounded-lg bg-white/[0.02] border border-white/[0.06]">
+            <div className="text-[11px] font-bold text-gray-300 mb-2">カテゴリの分け方</div>
+            <div className="flex gap-1.5 mb-2">
+              <button
+                onClick={() => setSplitMode('grade')}
+                className="flex-1 py-2 px-2 rounded-md text-[11px] font-semibold cursor-pointer text-center"
+                style={{
+                  border: splitMode === 'grade' ? '2px solid #60A5FA' : '1px solid rgba(255,255,255,0.08)',
+                  background: splitMode === 'grade' ? 'rgba(96,165,250,0.12)' : 'rgba(255,255,255,0.02)',
+                  color: splitMode === 'grade' ? '#60A5FA' : '#6B7280',
+                }}
+              >
+                学年・性別で自動分類
+              </button>
+              <button
+                onClick={() => setSplitMode('column')}
+                className="flex-1 py-2 px-2 rounded-md text-[11px] font-semibold cursor-pointer text-center"
+                style={{
+                  border: splitMode === 'column' ? '2px solid #FBBF24' : '1px solid rgba(255,255,255,0.08)',
+                  background: splitMode === 'column' ? 'rgba(251,191,36,0.12)' : 'rgba(255,255,255,0.02)',
+                  color: splitMode === 'column' ? '#FBBF24' : '#6B7280',
+                }}
+              >
+                列の値で分ける（班・組など）
+              </button>
+            </div>
+            {splitMode === 'column' && (
+              <div>
+                <div className="text-[10px] text-gray-400 mb-1">組分けに使う列</div>
+                <select
+                  className="w-full px-2 py-1.5 rounded bg-white/10 text-white text-[11px] border border-white/20"
+                  value={columnMap.group}
+                  onChange={e => setColumnMap({ ...columnMap, group: Number(e.target.value) })}
+                >
+                  <option value={-1} className="bg-gray-800">選択してください</option>
+                  {headers.map((h, hi) => (
+                    <option key={hi} value={hi} className="bg-gray-800">{h || `列${hi + 1}`}</option>
+                  ))}
+                </select>
+                <div className="text-[10px] text-amber-400/80 mt-1.5">
+                  列の値（例: 1班、2班…）ごとにカテゴリが自動作成されます。学年・性別はカテゴリ分けには使用されません。
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-5 gap-2 mb-4">
             {fieldKeys.map((key, i) => (
               <div key={key}>
@@ -2124,8 +2214,9 @@ function CsvImportPanel() {
               戻る
             </button>
             <button
-              className="px-6 py-2 rounded-md bg-blue-600 text-white text-xs font-semibold cursor-pointer border-none"
+              className="px-6 py-2 rounded-md bg-blue-600 text-white text-xs font-semibold cursor-pointer border-none disabled:opacity-40 disabled:cursor-not-allowed"
               onClick={generatePreview}
+              disabled={splitMode === 'column' && columnMap.group < 0}
             >
               プレビュー確認
             </button>

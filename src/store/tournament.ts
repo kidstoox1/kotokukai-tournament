@@ -76,6 +76,7 @@ interface TournamentState {
   startFinals: (venueId: string) => void;
   setFinalsVenue: (venueId: string) => void;
   setGroupOrder: (venueId: string, orderedKeys: string[]) => void;
+  updateLiveScore: (matchId: string, live: { scoreA: number; scoreB: number; warningsA: number; warningsB: number }) => void;
 
   // --- 団体戦アクション ---
   addTeam: (team: Team) => void;
@@ -570,6 +571,20 @@ export const useTournamentStore = create<TournamentState>()(
 
   setGroupOrder: (venueId, orderedKeys) => {
     set(s => ({ groupOrderMap: { ...s.groupOrderMap, [venueId]: orderedKeys } }));
+  },
+
+  // 進行中試合の途中経過（本数・警告）をリアルタイム反映する
+  // 記録係の入力モーダルから呼ばれ、確定前のスコアが全端末で見えるようになる
+  updateLiveScore: (matchId, live) => {
+    const m = get().allMatches.find(x => x.id === matchId);
+    if (!m || m.status !== 'active') return; // 進行中の試合のみ（完了試合の修正中は反映しない）
+    if (
+      m.scoreA === live.scoreA && m.scoreB === live.scoreB &&
+      m.warningsA === live.warningsA && m.warningsB === live.warningsB
+    ) return;
+    set(s => ({
+      allMatches: s.allMatches.map(x => x.id === matchId ? { ...x, ...live } : x),
+    }));
   },
 
   startFinals: (venueId) => {

@@ -447,7 +447,13 @@ function LeagueMatrix({
                             </div>
                           </div>
                         ) : isActive ? (
-                          <div className="text-[9px] font-bold text-red-400 animate-pulse">進行中</div>
+                          <div className="leading-tight">
+                            <div className="text-[9px] font-bold text-red-400 animate-pulse">進行中</div>
+                            {/* 入力途中の本数をライブ表示 */}
+                            {(m.scoreA > 0 || m.scoreB > 0) && (
+                              <div className="text-[10px] font-bold text-white">{myScore}-{oppScore}</div>
+                            )}
+                          </div>
                         ) : (
                           <div className="text-[9px] text-gray-400">#{cell.matchNo}</div>
                         )}
@@ -564,7 +570,17 @@ function MatchScheduleList({
             </div>
             <div className="flex-shrink-0 text-[9px] font-bold">
               {isActive ? (
-                <Badge color="#EF4444">進行中</Badge>
+                <span className="inline-flex items-center gap-1">
+                  {/* 入力途中の本数・警告をライブ表示 */}
+                  {(m.scoreA > 0 || m.scoreB > 0 || (m.warningsA || 0) > 0 || (m.warningsB || 0) > 0) && (
+                    <span className="text-white font-bold text-[10px] inline-flex items-center">
+                      {m.scoreA}{(m.warningsA || 0) > 0 && <WarningIndicator warnings={m.warningsA} />}
+                      <span className="text-gray-500 mx-0.5">-</span>
+                      {m.scoreB}{(m.warningsB || 0) > 0 && <WarningIndicator warnings={m.warningsB} />}
+                    </span>
+                  )}
+                  <Badge color="#EF4444">進行中</Badge>
+                </span>
               ) : isCompleted ? (
                 <span className="inline-flex items-center gap-1">
                   <span className="text-white font-bold text-[10px]">{m.scoreA}-{m.scoreB}</span>
@@ -764,12 +780,19 @@ function MatchRecordModal({
   onClose: () => void;
   onSubmit: (m: Match) => void;
 }) {
-  const { categories } = useTournamentStore();
+  const { categories, updateLiveScore } = useTournamentStore();
   const isEdit = match.status === 'completed';
   const [scoreA, setScoreA] = useState(match.scoreA || 0);
   const [scoreB, setScoreB] = useState(match.scoreB || 0);
   const [warningsA, setWarningsA] = useState(match.warningsA || 0);
   const [warningsB, setWarningsB] = useState(match.warningsB || 0);
+
+  // ライブ速報: 進行中試合の入力中スコア（本数・警告）を確定前でも
+  // ストアへ反映し、管理・モニター・観覧へリアルタイム配信する
+  useEffect(() => {
+    if (match.status !== 'active') return;
+    updateLiveScore(match.id, { scoreA, scoreB, warningsA, warningsB });
+  }, [match.status, match.id, scoreA, scoreB, warningsA, warningsB, updateLiveScore]);
   const [resultType, setResultType] = useState(match.resultType || RESULT.NORMAL);
   const [defaultWinSide, setDefaultWinSide] = useState<'A' | 'B'>(
     match.resultType === RESULT.DEFAULT_WIN
@@ -4743,7 +4766,16 @@ function MonitorPage() {
                       <span className="font-bold text-sm" style={{ color: RED }}><NameWithKana name={display.playerA?.name || ''} kana={display.playerA?.nameKana} size="sm" /></span>
                       {display.playerA?.dojo && <div className="text-[9px] text-gray-400">{display.playerA.dojo}</div>}
                     </div>
-                    <span className="mx-2 text-gray-600 font-extrabold">VS</span>
+                    {/* 進行中は入力途中の本数・警告をライブ表示 */}
+                    {active && (display.scoreA > 0 || display.scoreB > 0 || (display.warningsA || 0) > 0 || (display.warningsB || 0) > 0) ? (
+                      <span className="mx-2 text-white font-extrabold text-base inline-flex items-center align-middle">
+                        {display.scoreA}{(display.warningsA || 0) > 0 && <WarningIndicator warnings={display.warningsA} />}
+                        <span className="text-gray-500 mx-1">-</span>
+                        {display.scoreB}{(display.warningsB || 0) > 0 && <WarningIndicator warnings={display.warningsB} />}
+                      </span>
+                    ) : (
+                      <span className="mx-2 text-gray-600 font-extrabold">VS</span>
+                    )}
                     <div className="inline-block text-center mx-1">
                       <span className="font-bold text-sm" style={{ color: WHITE_PLAYER }}><NameWithKana name={display.playerB?.name || ''} kana={display.playerB?.nameKana} size="sm" /></span>
                       {display.playerB?.dojo && <div className="text-[9px] text-gray-400">{display.playerB.dojo}</div>}
@@ -4880,7 +4912,16 @@ function SpectatorPage() {
                     {display ? (
                       <div className="text-center text-[13px] font-semibold">
                         <span style={{ color: RED }}><NameWithKana name={display.playerA?.name || ''} kana={display.playerA?.nameKana} size="sm" /></span>
-                        <span className="mx-1.5 text-gray-500">VS</span>
+                        {/* 進行中は入力途中の本数・警告をライブ表示 */}
+                        {isActive && (display.scoreA > 0 || display.scoreB > 0 || (display.warningsA || 0) > 0 || (display.warningsB || 0) > 0) ? (
+                          <span className="mx-1.5 text-white font-extrabold inline-flex items-center align-middle">
+                            {display.scoreA}{(display.warningsA || 0) > 0 && <WarningIndicator warnings={display.warningsA} />}
+                            <span className="text-gray-500 mx-0.5">-</span>
+                            {display.scoreB}{(display.warningsB || 0) > 0 && <WarningIndicator warnings={display.warningsB} />}
+                          </span>
+                        ) : (
+                          <span className="mx-1.5 text-gray-500">VS</span>
+                        )}
                         <span style={{ color: WHITE_PLAYER }}><NameWithKana name={display.playerB?.name || ''} kana={display.playerB?.nameKana} size="sm" /></span>
                       </div>
                     ) : (

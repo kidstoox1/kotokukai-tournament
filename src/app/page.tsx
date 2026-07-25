@@ -4761,24 +4761,25 @@ function MonitorPage() {
                       ? `${String.fromCharCode(65 + (display.groupIndex || 0))}グループ`
                       : 'トーナメント'}
                   </div>
+                  {/* 白（playerB）を左・赤（playerA）を右に表示（記録係画面と同じ並び） */}
                   <div className="text-center">
                     <div className="inline-block text-center mx-1">
-                      <span className="font-bold text-sm" style={{ color: RED }}><NameWithKana name={display.playerA?.name || ''} kana={display.playerA?.nameKana} size="sm" /></span>
-                      {display.playerA?.dojo && <div className="text-[9px] text-gray-400">{display.playerA.dojo}</div>}
+                      <span className="font-bold text-sm" style={{ color: WHITE_PLAYER }}><NameWithKana name={display.playerB?.name || ''} kana={display.playerB?.nameKana} size="sm" /></span>
+                      {display.playerB?.dojo && <div className="text-[9px] text-gray-400">{display.playerB.dojo}</div>}
                     </div>
                     {/* 進行中は入力途中の本数・警告をライブ表示 */}
                     {active && (display.scoreA > 0 || display.scoreB > 0 || (display.warningsA || 0) > 0 || (display.warningsB || 0) > 0) ? (
                       <span className="mx-2 text-white font-extrabold text-base inline-flex items-center align-middle">
-                        {display.scoreA}{(display.warningsA || 0) > 0 && <WarningIndicator warnings={display.warningsA} />}
-                        <span className="text-gray-500 mx-1">-</span>
                         {display.scoreB}{(display.warningsB || 0) > 0 && <WarningIndicator warnings={display.warningsB} />}
+                        <span className="text-gray-500 mx-1">-</span>
+                        {display.scoreA}{(display.warningsA || 0) > 0 && <WarningIndicator warnings={display.warningsA} />}
                       </span>
                     ) : (
                       <span className="mx-2 text-gray-600 font-extrabold">VS</span>
                     )}
                     <div className="inline-block text-center mx-1">
-                      <span className="font-bold text-sm" style={{ color: WHITE_PLAYER }}><NameWithKana name={display.playerB?.name || ''} kana={display.playerB?.nameKana} size="sm" /></span>
-                      {display.playerB?.dojo && <div className="text-[9px] text-gray-400">{display.playerB.dojo}</div>}
+                      <span className="font-bold text-sm" style={{ color: RED }}><NameWithKana name={display.playerA?.name || ''} kana={display.playerA?.nameKana} size="sm" /></span>
+                      {display.playerA?.dojo && <div className="text-[9px] text-gray-400">{display.playerA.dojo}</div>}
                     </div>
                   </div>
                 </div>
@@ -4910,19 +4911,20 @@ function SpectatorPage() {
                       </div>
                     </div>
                     {display ? (
+                      /* 白（playerB）を左・赤（playerA）を右に表示（記録係画面と同じ並び） */
                       <div className="text-center text-[13px] font-semibold">
-                        <span style={{ color: RED }}><NameWithKana name={display.playerA?.name || ''} kana={display.playerA?.nameKana} size="sm" /></span>
+                        <span style={{ color: WHITE_PLAYER }}><NameWithKana name={display.playerB?.name || ''} kana={display.playerB?.nameKana} size="sm" /></span>
                         {/* 進行中は入力途中の本数・警告をライブ表示 */}
                         {isActive && (display.scoreA > 0 || display.scoreB > 0 || (display.warningsA || 0) > 0 || (display.warningsB || 0) > 0) ? (
                           <span className="mx-1.5 text-white font-extrabold inline-flex items-center align-middle">
-                            {display.scoreA}{(display.warningsA || 0) > 0 && <WarningIndicator warnings={display.warningsA} />}
-                            <span className="text-gray-500 mx-0.5">-</span>
                             {display.scoreB}{(display.warningsB || 0) > 0 && <WarningIndicator warnings={display.warningsB} />}
+                            <span className="text-gray-500 mx-0.5">-</span>
+                            {display.scoreA}{(display.warningsA || 0) > 0 && <WarningIndicator warnings={display.warningsA} />}
                           </span>
                         ) : (
                           <span className="mx-1.5 text-gray-500">VS</span>
                         )}
-                        <span style={{ color: WHITE_PLAYER }}><NameWithKana name={display.playerB?.name || ''} kana={display.playerB?.nameKana} size="sm" /></span>
+                        <span style={{ color: RED }}><NameWithKana name={display.playerA?.name || ''} kana={display.playerA?.nameKana} size="sm" /></span>
                       </div>
                     ) : (
                       <div className="text-center text-[11px] text-gray-500 py-1">

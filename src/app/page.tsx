@@ -2702,6 +2702,85 @@ function CategoryManagePanel() {
 }
 
 // ==========================================
+// 全コート 試合順・対戦表パネル（管理画面用）
+// ==========================================
+function AllCourtsSchedulePanel() {
+  const { categories, allMatches, venueAssignments, catPhases, tournamentData, leagueGroups, groupOrderMap } = useTournamentStore();
+
+  const venues = VENUES.map(v => {
+    const vCats = Object.entries(venueAssignments)
+      .filter(([, vid]) => vid === v.id)
+      .map(([c]) => c);
+    const vAllMatches = allMatches.filter(m =>
+      !m.isBye && (
+        vCats.includes(m.categoryId) ||
+        (m.venueId === v.id && catPhases[m.categoryId] === PHASE_TYPES.AWAITING_FINALS && isFinalMatch(m, tournamentData))
+      )
+    );
+    const completed = vAllMatches.filter(m => m.status === 'completed');
+    const active = vAllMatches.filter(m => m.status === 'active');
+    const pending = sortMatchesByGroupOrder(
+      vAllMatches
+        .filter(m => m.status === 'pending' && m.playerA && m.playerB)
+        .filter(m => !(catPhases[m.categoryId] === PHASE_TYPES.AWAITING_FINALS && isFinalMatch(m, tournamentData) && !m.venueId)),
+      groupOrderMap[v.id],
+    );
+    const sorted = [...completed, ...active, ...pending];
+    return { v, vAllMatches, sorted, done: completed.length, act: active.length, wait: pending.length };
+  }).filter(x => x.vAllMatches.length > 0);
+
+  if (venues.length === 0) {
+    return (
+      <div className="bg-white/[0.03] border border-white/[0.07] rounded-[10px] p-8 text-center text-gray-500 text-sm">
+        試合はまだ生成されていません。カテゴリを開始すると各コートの試合順・対戦表が表示されます
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+      {venues.map(({ v, sorted, done, act, wait }) => (
+        <div
+          key={v.id}
+          className="rounded-[10px] p-4"
+          style={{ background: `${v.color}08`, border: `1px solid ${v.color}30` }}
+        >
+          <div className="text-sm font-bold mb-3 flex items-center gap-2" style={{ color: v.color }}>
+            <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: v.color }} />
+            {v.name}
+            <span className="text-[10px] text-gray-400 font-normal">
+              （完了 {done} / 進行中 {act} / 待機 {wait}）
+            </span>
+          </div>
+
+          <div className="mb-3">
+            <div className="text-[10px] font-bold text-gray-400 mb-2">対戦表（実施順）</div>
+            <VenueUnitTables
+              venueMatches={sorted}
+              allMatches={allMatches}
+              orderedKeys={groupOrderMap[v.id]}
+              categories={categories}
+              leagueGroups={leagueGroups}
+              tournamentData={tournamentData}
+            />
+          </div>
+
+          <div>
+            <div className="text-[10px] font-bold text-gray-400 mb-2">試合順（全{sorted.length}試合）</div>
+            <MatchScheduleList
+              matches={sorted}
+              categoriesLabel={(cid) => categories.find(c => c.id === cid)?.label || cid}
+              tournamentData={tournamentData}
+              compact
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ==========================================
 // コート別 グループ実施順パネル（管理画面用）
 // ==========================================
 function CourtGroupOrderPanel() {
@@ -2853,6 +2932,8 @@ function AdminPage() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [nextPhaseModal, setNextPhaseModal] = useState<{ catId: string; currentPhase: PhaseType } | null>(null);
   const [confirmRevert, setConfirmRevert] = useState<string | null>(null);
+  // 表示タブ: 運営管理 / 全コートの試合順・対戦表
+  const [adminTab, setAdminTab] = useState<'manage' | 'schedule'>('manage');
   // カテゴリのフェーズ完了通知（管理者が次ステージへ進める操作が必要）
   // 例: 「小学3年男子」のリーグ戦が全グループ終了 → 管理者がリーグ決勝 or 決勝トーナメントを選ぶ
   const [adminPhaseNotice, setAdminPhaseNotice] = useState<{
@@ -2932,6 +3013,30 @@ function AdminPage() {
 
   return (
     <div>
+      {/* 表示タブ切替: 運営管理 / 試合順・対戦表（全コート） */}
+      <div className="flex gap-1 mb-3">
+        {([
+          { key: 'manage', label: '⚙️ 運営管理' },
+          { key: 'schedule', label: '📋 試合順・対戦表（全コート）' },
+        ] as const).map(t => (
+          <button
+            key={t.key}
+            onClick={() => setAdminTab(t.key)}
+            className="flex-1 py-2.5 rounded-md text-[13px] font-bold cursor-pointer border-none text-center"
+            style={{
+              background: adminTab === t.key ? '#B91C1C' : 'rgba(255,255,255,0.06)',
+              color: adminTab === t.key ? '#FFFFFF' : '#9CA3AF',
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* 全コートの試合順・対戦表タブ */}
+      {adminTab === 'schedule' && <AllCourtsSchedulePanel />}
+
+      <div className={adminTab === 'manage' ? '' : 'hidden'}>
       {/* 統計グリッド */}
       <div className="grid grid-cols-4 gap-2.5 mb-3">
         <StatCard value={players.length} label="登録選手数" color="#3B82F6" />
@@ -3238,6 +3343,7 @@ function AdminPage() {
           </div>
         </div>
       )}
+      </div>{/* 運営管理タブここまで */}
 
       {/* カテゴリ詳細モーダル */}
       {selectedCat && (
@@ -3670,14 +3776,16 @@ function AdminPage() {
         </div>
       )}
 
-      {/* 決勝戦パネル */}
-      <FinalsPanel
-        allMatches={allMatches}
-        catPhases={catPhases}
-        tournamentData={tournamentData}
-        onRecordMatch={setRecordingMatch}
-        onActivateMatch={activateMatch}
-      />
+      {/* 決勝戦パネル（運営管理タブのみ表示） */}
+      <div className={adminTab === 'manage' ? '' : 'hidden'}>
+        <FinalsPanel
+          allMatches={allMatches}
+          catPhases={catPhases}
+          tournamentData={tournamentData}
+          onRecordMatch={setRecordingMatch}
+          onActivateMatch={activateMatch}
+        />
+      </div>
 
       {/* 試合結果入力モーダル */}
       {recordingMatch && (

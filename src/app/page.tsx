@@ -18,6 +18,7 @@ import {
   WHITE_BORDER,
 } from '@/lib/constants';
 import { matchTypeLabel, matchTypeColor, isFinalMatch } from '@/lib/helpers';
+import QRCode from 'qrcode';
 import { calcStandings } from '@/lib/logic/league';
 import { getFinalRankings, getLeagueFinalRankings } from '@/lib/logic/rankings';
 import { calculateFinalScores } from '@/lib/logic/scoring';
@@ -2938,6 +2939,147 @@ function AdminPhaseNotifier() {
 }
 
 // ==========================================
+// URL・QRコード共有パネル（管理画面用）
+// 画面のQRを記録係の端末で直接読み取る / URLをコピーして送付 / A4印刷
+// ==========================================
+function UrlSharePanel() {
+  const [origin, setOrigin] = useState('');
+  const [qrMap, setQrMap] = useState<Record<string, string>>({});
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const entries = [
+    { path: '/', name: '管理者', desc: '全機能・運営責任者のみ', color: '#B91C1C', caution: true },
+    ...VENUES.map(v => ({
+      path: `/recorder/${v.id.toLowerCase()}`,
+      name: `記録係 ${v.name}`,
+      desc: `${v.name}専用の試合入力`,
+      color: v.color,
+      caution: false,
+    })),
+    { path: '/recorder', name: '記録係（全コート）', desc: '本部・予備端末用', color: '#6B7280', caution: false },
+    { path: '/viewer', name: '観覧（保護者・観客）', desc: '結果閲覧のみ・一般配布用', color: '#A855F7', caution: false },
+  ];
+
+  // QRコードを生成（自分のドメインを元にするため、本番でもローカルでも正しいURLになる）
+  useEffect(() => {
+    const o = window.location.origin;
+    setOrigin(o);
+    let alive = true;
+    (async () => {
+      const pairs: [string, string][] = [];
+      for (const e of entries) {
+        try {
+          const dataUrl = await QRCode.toDataURL(o + e.path, { width: 240, margin: 1 });
+          pairs.push([e.path, dataUrl]);
+        } catch {
+          // 生成失敗時はプレースホルダのまま
+        }
+      }
+      if (alive) setQrMap(Object.fromEntries(pairs));
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const copyUrl = async (path: string) => {
+    try {
+      await navigator.clipboard.writeText(origin + path);
+      setCopied(path);
+      setTimeout(() => setCopied(c => (c === path ? null : c)), 2000);
+    } catch {
+      // クリップボード不可の環境では何もしない（URLは画面に表示済み）
+    }
+  };
+
+  // A4・1枚に収まる印刷用ページを別ウィンドウで開いて印刷
+  const printSheet = () => {
+    const w = window.open('', '_blank');
+    if (!w) return;
+    const cards = entries.map(e => `
+      <div class="card">
+        <div class="name" style="color:${e.color}">${e.name}</div>
+        <img src="${qrMap[e.path] || ''}" alt="${e.name}" />
+        <div class="url">${origin}${e.path}</div>
+        <div class="desc">${e.desc}${e.caution ? '　⚠ 取扱注意' : ''}</div>
+      </div>`).join('');
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>大会運営システム 接続用URL一覧</title>
+      <style>
+        @page { size: A4 portrait; margin: 12mm; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Hiragino Sans', 'Yu Gothic', sans-serif; color: #111; }
+        h1 { font-size: 15pt; text-align: center; margin-bottom: 1mm; }
+        .sub { text-align: center; font-size: 9pt; color: #555; margin-bottom: 5mm; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
+        .card { border: 1px solid #bbb; border-radius: 3mm; padding: 3mm; text-align: center; }
+        .name { font-size: 11pt; font-weight: bold; margin-bottom: 1.5mm; }
+        img { width: 36mm; height: 36mm; }
+        .url { font-size: 7.5pt; margin-top: 1.5mm; word-break: break-all; }
+        .desc { font-size: 7.5pt; color: #555; margin-top: 1mm; }
+      </style></head><body>
+      <h1>日本拳法 孝徳会 大会運営システム 接続用URL</h1>
+      <div class="sub">スマホ・タブレットのカメラでQRコードを読み取ってください</div>
+      <div class="grid">${cards}</div>
+      </body></html>`);
+    w.document.close();
+    setTimeout(() => w.print(), 400);
+  };
+
+  return (
+    <div className="bg-white/[0.03] border border-white/[0.07] rounded-[10px] p-4">
+      <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+        <div className="text-sm font-bold text-white">接続用URL・QRコード</div>
+        <button
+          onClick={printSheet}
+          className="px-4 py-2 rounded-md bg-blue-600 text-white text-xs font-bold cursor-pointer border-none"
+        >
+          🖨 A4で印刷
+        </button>
+      </div>
+      <div className="text-[11px] text-gray-400 mb-3">
+        この画面のQRを記録係のタブレットで直接読み取るか、「URLをコピー」してLINE等で送付できます
+      </div>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-3">
+        {entries.map(e => (
+          <div
+            key={e.path}
+            className="rounded-lg p-3 text-center"
+            style={{ background: `${e.color}08`, border: `1px solid ${e.color}30` }}
+          >
+            <div className="text-[13px] font-bold mb-0.5" style={{ color: e.color }}>{e.name}</div>
+            <div className="text-[10px] text-gray-400 mb-2">{e.desc}</div>
+            {qrMap[e.path] ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={qrMap[e.path]}
+                alt={`${e.name} QRコード`}
+                className="mx-auto rounded bg-white p-1"
+                style={{ width: 168, height: 168 }}
+              />
+            ) : (
+              <div className="mx-auto bg-white/10 rounded animate-pulse" style={{ width: 168, height: 168 }} />
+            )}
+            <div className="text-[10px] text-gray-400 mt-2 break-all">{origin}{e.path}</div>
+            {e.caution && (
+              <div className="text-[9px] text-amber-400 mt-0.5">⚠ 運営責任者のみに共有してください</div>
+            )}
+            <button
+              onClick={() => copyUrl(e.path)}
+              className="mt-2 w-full py-1.5 rounded-md text-[11px] font-bold cursor-pointer border-none"
+              style={{
+                background: copied === e.path ? '#22C55E' : 'rgba(255,255,255,0.08)',
+                color: copied === e.path ? '#FFFFFF' : '#D6DCE8',
+              }}
+            >
+              {copied === e.path ? '✓ コピーしました' : 'URLをコピー'}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
 // 全コート 試合順・対戦表パネル（管理画面用）
 // ==========================================
 function AllCourtsSchedulePanel() {
@@ -3168,8 +3310,8 @@ function AdminPage() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [nextPhaseModal, setNextPhaseModal] = useState<{ catId: string; currentPhase: PhaseType } | null>(null);
   const [confirmRevert, setConfirmRevert] = useState<string | null>(null);
-  // 表示タブ: 運営管理 / 全コートの試合順・対戦表
-  const [adminTab, setAdminTab] = useState<'manage' | 'schedule'>('manage');
+  // 表示タブ: 運営管理 / 全コートの試合順・対戦表 / URL・QR共有
+  const [adminTab, setAdminTab] = useState<'manage' | 'schedule' | 'share'>('manage');
 
   const handleSubmitMatch = useCallback((m: Match) => {
     submitMatchResult(m);
@@ -3178,11 +3320,12 @@ function AdminPage() {
 
   return (
     <div>
-      {/* 表示タブ切替: 運営管理 / 試合順・対戦表（全コート） */}
+      {/* 表示タブ切替: 運営管理 / 試合順・対戦表（全コート） / URL・QR共有 */}
       <div className="flex gap-1 mb-3">
         {([
           { key: 'manage', label: '⚙️ 運営管理' },
           { key: 'schedule', label: '📋 試合順・対戦表（全コート）' },
+          { key: 'share', label: '🔗 URL・QR' },
         ] as const).map(t => (
           <button
             key={t.key}
@@ -3200,6 +3343,9 @@ function AdminPage() {
 
       {/* 全コートの試合順・対戦表タブ */}
       {adminTab === 'schedule' && <AllCourtsSchedulePanel />}
+
+      {/* URL・QR共有タブ */}
+      {adminTab === 'share' && <UrlSharePanel />}
 
       <div className={adminTab === 'manage' ? '' : 'hidden'}>
       {/* 統計グリッド */}

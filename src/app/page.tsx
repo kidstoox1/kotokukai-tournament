@@ -68,6 +68,7 @@ function VenueUnitTables({
   leagueGroups,
   tournamentData,
   highlightPlayerId,
+  showLiveScore = true,
 }: {
   venueMatches: Match[];          // ユニット列挙・順序決定用（コート内の試合）
   allMatches: Match[];            // 表描画用（BYE含む全試合）
@@ -76,6 +77,7 @@ function VenueUnitTables({
   leagueGroups: Record<string, Player[][]>;
   tournamentData: Record<string, TournamentData>;
   highlightPlayerId?: string | null;
+  showLiveScore?: boolean;        // 進行中試合の途中経過を表示するか（観覧では非表示）
 }) {
   // グループ実施順にユニット（グループ / リーグ決勝 / トーナメント）を列挙
   const seen = new Set<string>();
@@ -123,6 +125,7 @@ function VenueUnitTables({
               matches={lfMatches}
               title={`${catLabel} リーグ決勝`}
               highlightPlayerId={highlightPlayerId}
+              showLiveScore={showLiveScore}
             />
           );
         }
@@ -140,6 +143,7 @@ function VenueUnitTables({
             matches={gM}
             title={`${catLabel} ${String.fromCharCode(65 + gi)}グループ`}
             highlightPlayerId={highlightPlayerId}
+            showLiveScore={showLiveScore}
           />
         );
       })}
@@ -322,11 +326,13 @@ function LeagueMatrix({
   matches,
   title,
   highlightPlayerId,
+  showLiveScore = true,
 }: {
   group: Player[];
   matches: Match[];
   title?: string;
   highlightPlayerId?: string | null;
+  showLiveScore?: boolean;  // 進行中試合の途中経過を表示するか（観覧では非表示）
 }) {
   if (group.length < 2 || matches.length === 0) return null;
 
@@ -450,7 +456,7 @@ function LeagueMatrix({
                           <div className="leading-tight">
                             <div className="text-[9px] font-bold text-red-400 animate-pulse">進行中</div>
                             {/* 入力途中の本数をライブ表示 */}
-                            {(m.scoreA > 0 || m.scoreB > 0) && (
+                            {showLiveScore && (m.scoreA > 0 || m.scoreB > 0) && (
                               <div className="text-[10px] font-bold text-white">{myScore}-{oppScore}</div>
                             )}
                           </div>
@@ -483,12 +489,14 @@ function MatchScheduleList({
   highlightPlayerId,
   tournamentData,
   compact = false,
+  showLiveScore = true,
 }: {
   matches: Match[];
   categoriesLabel?: (catId: string) => string;
   highlightPlayerId?: string | null;
   tournamentData?: Record<string, TournamentData>;
   compact?: boolean;
+  showLiveScore?: boolean;  // 進行中試合の途中経過を表示するか（観覧では非表示）
 }) {
   if (matches.length === 0) {
     return <div className="text-[11px] text-gray-500 text-center py-2">試合予定なし</div>;
@@ -572,7 +580,7 @@ function MatchScheduleList({
               {isActive ? (
                 <span className="inline-flex items-center gap-1">
                   {/* 入力途中の本数・警告をライブ表示 */}
-                  {(m.scoreA > 0 || m.scoreB > 0 || (m.warningsA || 0) > 0 || (m.warningsB || 0) > 0) && (
+                  {showLiveScore && (m.scoreA > 0 || m.scoreB > 0 || (m.warningsA || 0) > 0 || (m.warningsB || 0) > 0) && (
                     <span className="text-white font-bold text-[10px] inline-flex items-center">
                       {m.scoreA}{(m.warningsA || 0) > 0 && <WarningIndicator warnings={m.warningsA} />}
                       <span className="text-gray-500 mx-0.5">-</span>
@@ -5019,19 +5027,11 @@ function SpectatorPage() {
                       </div>
                     </div>
                     {display ? (
-                      /* 白（playerB）を左・赤（playerA）を右に表示（記録係画面と同じ並び） */
+                      /* 白（playerB）を左・赤（playerA）を右に表示（記録係画面と同じ並び）
+                         観覧では途中経過は表示しない（結果のみ） */
                       <div className="text-center text-[13px] font-semibold">
                         <span style={{ color: WHITE_PLAYER }}><NameWithKana name={display.playerB?.name || ''} kana={display.playerB?.nameKana} size="sm" /></span>
-                        {/* 進行中は入力途中の本数・警告をライブ表示 */}
-                        {isActive && (display.scoreA > 0 || display.scoreB > 0 || (display.warningsA || 0) > 0 || (display.warningsB || 0) > 0) ? (
-                          <span className="mx-1.5 text-white font-extrabold inline-flex items-center align-middle">
-                            {display.scoreB}{(display.warningsB || 0) > 0 && <WarningIndicator warnings={display.warningsB} />}
-                            <span className="text-gray-500 mx-0.5">-</span>
-                            {display.scoreA}{(display.warningsA || 0) > 0 && <WarningIndicator warnings={display.warningsA} />}
-                          </span>
-                        ) : (
-                          <span className="mx-1.5 text-gray-500">VS</span>
-                        )}
+                        <span className="mx-1.5 text-gray-500">VS</span>
                         <span style={{ color: RED }}><NameWithKana name={display.playerA?.name || ''} kana={display.playerA?.nameKana} size="sm" /></span>
                       </div>
                     ) : (
@@ -5162,7 +5162,7 @@ function SpectatorPage() {
               </div>
             )}
 
-            {/* 対戦表（グループ実施順に連動して表示） */}
+            {/* 対戦表（グループ実施順に連動して表示、途中経過なし） */}
             <div className="mb-3">
               <div className="text-xs font-bold text-white mb-2">対戦表（実施順）</div>
               <VenueUnitTables
@@ -5173,6 +5173,7 @@ function SpectatorPage() {
                 leagueGroups={leagueGroups}
                 tournamentData={tournamentData}
                 highlightPlayerId={highlightPlayerId}
+                showLiveScore={false}
               />
             </div>
 
@@ -5189,6 +5190,7 @@ function SpectatorPage() {
                   categoriesLabel={(cid) => categories.find(c => c.id === cid)?.label || cid}
                   highlightPlayerId={highlightPlayerId}
                   tournamentData={tournamentData}
+                  showLiveScore={false}
                 />
               )}
             </div>
@@ -5307,7 +5309,7 @@ function SpectatorPage() {
               return (
                 <div key={gi} className="mb-3">
                   <StandingsTable standings={calcStandings(group, gM)} groupIdx={gi} advanceCount={catAdvanceCounts[specCat] || 1} />
-                  <LeagueMatrix group={group} matches={gM} title={groupLabel} highlightPlayerId={highlightPlayerId} />
+                  <LeagueMatrix group={group} matches={gM} title={groupLabel} highlightPlayerId={highlightPlayerId} showLiveScore={false} />
                 </div>
               );
             });
@@ -5324,6 +5326,7 @@ function SpectatorPage() {
                 matches={lfMatches}
                 title="リーグ決勝 総当たり表"
                 highlightPlayerId={highlightPlayerId}
+                showLiveScore={false}
               />
             );
           })()}
@@ -5431,6 +5434,7 @@ function SpectatorPage() {
                   matches={sorted}
                   highlightPlayerId={highlightPlayerId}
                   tournamentData={tournamentData}
+                  showLiveScore={false}
                 />
               </div>
             );
@@ -5485,9 +5489,18 @@ function TournamentApp({ role = 'admin', defaultCourt }: { role?: RoleType; defa
     };
   }, []);
 
-  // --- Firestore リアルタイム同期 ---
+  // --- Firestore 同期 ---
+  // 記録係・管理・モニター: リアルタイム監視（onSnapshot、約1秒で反映）
+  // 観覧(viewer): 30秒間隔のポーリング（読み取り量節約のため。画面表示中のみ）
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+    const applyRemote = (remoteState: Record<string, unknown>) => {
+      isRemoteUpdate.current = true;
+      useTournamentStore.setState(remoteState);
+      setTimeout(() => { isRemoteUpdate.current = false; }, 100);
+    };
 
     const init = async () => {
       // 1. Firestoreから最新状態を読み込み
@@ -5495,10 +5508,8 @@ function TournamentApp({ role = 'admin', defaultCourt }: { role?: RoleType; defa
         const remoteState = await loadFromCloud();
         if (remoteState && remoteState.initialized) {
           // リモートにデータがあればそちらを優先
-          isRemoteUpdate.current = true;
-          useTournamentStore.setState(remoteState);
-          setTimeout(() => { isRemoteUpdate.current = false; }, 100);
-        } else {
+          applyRemote(remoteState);
+        } else if (role !== 'viewer') {
           // リモートが空ならローカル(localStorage)のデータをFirestoreに保存
           const localState = useTournamentStore.getState();
           if (localState.initialized) {
@@ -5511,20 +5522,39 @@ function TournamentApp({ role = 'admin', defaultCourt }: { role?: RoleType; defa
         setSyncStatus('offline');
       }
 
-      // 2. リアルタイム監視（他端末からの変更をプッシュで受信、接続状態も反映）
-      unsubscribe = subscribeToChanges(
-        (newState) => {
-          isRemoteUpdate.current = true;
-          useTournamentStore.setState(newState);
-          setTimeout(() => { isRemoteUpdate.current = false; }, 100);
-        },
-        (status) => setSyncStatus(status),
-      );
+      if (role === 'viewer') {
+        // 2a. 観覧: 30秒ごとに再取得（バックグラウンド時は停止し、復帰時に即取得）
+        const poll = async () => {
+          if (document.visibilityState !== 'visible') return;
+          try {
+            const remoteState = await loadFromCloud();
+            if (remoteState && remoteState.initialized) applyRemote(remoteState);
+            setSyncStatus('connected');
+          } catch {
+            setSyncStatus('offline');
+          }
+        };
+        pollTimer = setInterval(poll, 30_000);
+        const onVisible = () => {
+          if (document.visibilityState === 'visible') poll();
+        };
+        document.addEventListener('visibilitychange', onVisible);
+        unsubscribe = () => document.removeEventListener('visibilitychange', onVisible);
+      } else {
+        // 2b. 運営側: リアルタイム監視（接続状態も反映）
+        unsubscribe = subscribeToChanges(
+          (newState) => applyRemote(newState),
+          (status) => setSyncStatus(status),
+        );
+      }
     };
 
     init();
-    return () => { if (unsubscribe) unsubscribe(); };
-  }, []);
+    return () => {
+      if (unsubscribe) unsubscribe();
+      if (pollTimer) clearInterval(pollTimer);
+    };
+  }, [role]);
 
   // 3. ローカルの変更をFirestoreに保存（リモート更新時はスキップ）
   useEffect(() => {
@@ -5586,7 +5616,9 @@ function TournamentApp({ role = 'admin', defaultCourt }: { role?: RoleType; defa
               }}
             />
             <span className="text-[10px] text-gray-400">
-              {syncStatus === 'connected' ? 'リアルタイム同期中' : syncStatus === 'connecting' ? '接続中...' : 'オフライン'}
+              {syncStatus === 'connected'
+                ? (role === 'viewer' ? '自動更新中（30秒間隔）' : 'リアルタイム同期中')
+                : syncStatus === 'connecting' ? '接続中...' : 'オフライン'}
             </span>
           </div>
         </div>

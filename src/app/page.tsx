@@ -1444,14 +1444,17 @@ function NextPhaseModal({
   onSelect: (phase: PhaseType, count: number, thirdPlace: boolean) => void;
 }) {
   const { categories, leagueGroups } = useTournamentStore();
-  // 1グループのみのリーグ戦は「リーグ戦の結果で終了」を先頭（デフォルト）に追加
-  // （1グループから1名だけ進出してもトーナメントが組めないため）
+  // 1グループのみのリーグ戦: 進出1名ではトーナメントが組めないため、
+  // 進出人数は2名以上をデフォルトにし、「リーグ結果で終了」の選択肢も追加する
+  // （例: 3人リーグ → 上位2名で決勝トーナメント）
   const isSingleGroupLeague =
     currentPhase === PHASE_TYPES.LEAGUE && (leagueGroups[catId]?.length || 0) === 1;
   const options = isSingleGroupLeague
-    ? [FINISH_WITH_LEAGUE_OPTION, ...(NEXT_PHASE_OPTIONS[currentPhase] || [])]
+    ? [...(NEXT_PHASE_OPTIONS[currentPhase] || []), FINISH_WITH_LEAGUE_OPTION]
     : NEXT_PHASE_OPTIONS[currentPhase] || [];
-  const [advCount, setAdvCount] = useState(defaultAdvance);
+  const [advCount, setAdvCount] = useState(
+    isSingleGroupLeague ? Math.max(2, defaultAdvance) : defaultAdvance
+  );
   const [selectedPhase, setSelectedPhase] = useState<PhaseType>(
     (options[0]?.value as PhaseType) || PHASE_TYPES.FINAL_TOURNAMENT
   );
@@ -1502,21 +1505,33 @@ function NextPhaseModal({
         <div className="mb-3">
           <div className="text-[11px] text-gray-400 mb-1">各グループからの進出人数</div>
           <div className="flex gap-1.5">
-            {[1, 2, 3, 4].map(n => (
-              <button
-                key={n}
-                onClick={() => setAdvCount(n)}
-                className="px-4 py-2 rounded-md cursor-pointer font-bold text-sm"
-                style={{
-                  border: advCount === n ? '2px solid #22C55E' : '1px solid rgba(255,255,255,0.1)',
-                  background: advCount === n ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.03)',
-                  color: advCount === n ? '#22C55E' : '#9CA3AF',
-                }}
-              >
-                {n}名
-              </button>
-            ))}
+            {[1, 2, 3, 4].map(n => {
+              // 1グループのみの場合、進出1名では次の試合が組めないため選択不可
+              const disabled = isSingleGroupLeague && n === 1;
+              return (
+                <button
+                  key={n}
+                  onClick={() => { if (!disabled) setAdvCount(n); }}
+                  disabled={disabled}
+                  className="px-4 py-2 rounded-md font-bold text-sm"
+                  style={{
+                    border: advCount === n ? '2px solid #22C55E' : '1px solid rgba(255,255,255,0.1)',
+                    background: advCount === n ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.03)',
+                    color: disabled ? '#4B5563' : advCount === n ? '#22C55E' : '#9CA3AF',
+                    cursor: disabled ? 'not-allowed' : 'pointer',
+                    opacity: disabled ? 0.5 : 1,
+                  }}
+                >
+                  {n}名
+                </button>
+              );
+            })}
           </div>
+          {isSingleGroupLeague && (
+            <div className="text-[10px] text-amber-400/80 mt-1">
+              1グループのみのため2名以上を選択してください（例: 3人リーグ → 上位2名で決勝）
+            </div>
+          )}
         </div>
         )}
 

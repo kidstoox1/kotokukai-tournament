@@ -370,6 +370,13 @@ export const useTournamentStore = create<TournamentState>()(
     const currentPhase = catPhases[catId];
     const groups = leagueGroups[catId] || [];
     const hasTP = hasThirdPlace;
+
+    // リーグ戦の結果で順位確定して終了（1グループのリーグ戦向け）
+    // 追加の試合は生成せず、順位表がそのまま最終結果になる
+    if (nextPhase === PHASE_TYPES.DONE) {
+      set(s => ({ catPhases: { ...s.catPhases, [catId]: PHASE_TYPES.DONE } }));
+      return;
+    }
     // nameKanaを引き継ぐためのヘルパー
     const findKana = (id: string) => players.find(p => p.id === id)?.nameKana;
 
@@ -459,6 +466,12 @@ export const useTournamentStore = create<TournamentState>()(
       const td = tournamentData[catId];
       const prevPhase = td?.phaseKey || PHASE_TYPES.FINAL_TOURNAMENT;
       set(s => ({ catPhases: { ...s.catPhases, [catId]: prevPhase } }));
+      return;
+    }
+
+    if (currentPhase === PHASE_TYPES.DONE && !tournamentData[catId]) {
+      // 「リーグ戦の結果で終了」にした後の取り消し → リーグ戦に戻す
+      set(s => ({ catPhases: { ...s.catPhases, [catId]: PHASE_TYPES.LEAGUE } }));
       return;
     }
 

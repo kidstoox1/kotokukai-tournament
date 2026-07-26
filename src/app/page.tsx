@@ -10,6 +10,7 @@ import {
   PHASE_COLORS,
   START_FORMATS,
   NEXT_PHASE_OPTIONS,
+  FINISH_WITH_LEAGUE_OPTION,
   RESULT,
   RED,
   WHITE_PLAYER,
@@ -1442,8 +1443,14 @@ function NextPhaseModal({
   onClose: () => void;
   onSelect: (phase: PhaseType, count: number, thirdPlace: boolean) => void;
 }) {
-  const { categories } = useTournamentStore();
-  const options = NEXT_PHASE_OPTIONS[currentPhase] || [];
+  const { categories, leagueGroups } = useTournamentStore();
+  // 1グループのみのリーグ戦は「リーグ戦の結果で終了」を先頭（デフォルト）に追加
+  // （1グループから1名だけ進出してもトーナメントが組めないため）
+  const isSingleGroupLeague =
+    currentPhase === PHASE_TYPES.LEAGUE && (leagueGroups[catId]?.length || 0) === 1;
+  const options = isSingleGroupLeague
+    ? [FINISH_WITH_LEAGUE_OPTION, ...(NEXT_PHASE_OPTIONS[currentPhase] || [])]
+    : NEXT_PHASE_OPTIONS[currentPhase] || [];
   const [advCount, setAdvCount] = useState(defaultAdvance);
   const [selectedPhase, setSelectedPhase] = useState<PhaseType>(
     (options[0]?.value as PhaseType) || PHASE_TYPES.FINAL_TOURNAMENT
@@ -1483,7 +1490,15 @@ function NextPhaseModal({
           })}
         </div>
 
+        {/* リーグ結果で終了する場合の説明 */}
+        {selectedPhase === PHASE_TYPES.DONE && (
+          <div className="mb-4 p-2.5 px-3.5 rounded-lg text-xs" style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.15)', color: '#86EFAC' }}>
+            リーグ戦（総当たり）の結果から1位・2位・3位を確定し、このカテゴリを終了します。追加の試合はありません
+          </div>
+        )}
+
         {/* 進出人数 */}
+        {selectedPhase !== PHASE_TYPES.DONE && (
         <div className="mb-3">
           <div className="text-[11px] text-gray-400 mb-1">各グループからの進出人数</div>
           <div className="flex gap-1.5">
@@ -1503,9 +1518,10 @@ function NextPhaseModal({
             ))}
           </div>
         </div>
+        )}
 
         {/* 3位決定戦トグル */}
-        {selectedPhase !== PHASE_TYPES.LEAGUE_FINAL && (
+        {selectedPhase !== PHASE_TYPES.LEAGUE_FINAL && selectedPhase !== PHASE_TYPES.DONE && (
           <div className="mb-4">
             <button
               onClick={() => setThirdPlace(!thirdPlace)}
@@ -3333,7 +3349,8 @@ function AdminPage() {
                           )}
                           {(c.phase === PHASE_TYPES.LEAGUE_FINAL ||
                             c.phase === PHASE_TYPES.FINAL_TOURNAMENT ||
-                            c.phase === PHASE_TYPES.PRE_TOURNAMENT) && (
+                            c.phase === PHASE_TYPES.PRE_TOURNAMENT ||
+                            (c.phase === PHASE_TYPES.DONE && !tournamentData[c.id])) && (
                             <button
                               className="px-1.5 py-[3px] rounded-md bg-amber-600 text-white text-[9px] font-semibold cursor-pointer border-none"
                               onClick={() => setConfirmRevert(c.id)}
@@ -3378,6 +3395,15 @@ function AdminPage() {
               if (lfPlayers && lfMatches.length > 0) {
                 const lfRankings = getLeagueFinalRankings(lfPlayers as Player[], lfMatches);
                 if (lfRankings) return <FinalRankingsDisplay rankings={lfRankings} />;
+              }
+              // リーグ戦のみで終了したカテゴリ（1グループ）: 予選リーグの順位が最終結果
+              if (catPhases[selectedCat] === PHASE_TYPES.DONE) {
+                const groups = leagueGroups[selectedCat] || [];
+                const prelim = allMatches.filter(m => m.categoryId === selectedCat && m.type === 'league' && m.phaseKey === PHASE_TYPES.LEAGUE);
+                if (groups.length === 1 && prelim.length > 0) {
+                  const lr = getLeagueFinalRankings(groups[0] as Player[], prelim);
+                  if (lr) return <FinalRankingsDisplay rankings={lr} />;
+                }
               }
               return null;
             })()}
@@ -5239,6 +5265,15 @@ function SpectatorPage() {
             if (lfPlayers && lfMatches.length > 0) {
               const lfRankings = getLeagueFinalRankings(lfPlayers as Player[], lfMatches);
               if (lfRankings) return <FinalRankingsDisplay rankings={lfRankings} />;
+            }
+            // リーグ戦のみで終了したカテゴリ（1グループ）: 予選リーグの順位が最終結果
+            if (catPhases[specCat] === PHASE_TYPES.DONE) {
+              const groups = leagueGroups[specCat] || [];
+              const prelim = allMatches.filter(m => m.categoryId === specCat && m.type === 'league' && m.phaseKey === PHASE_TYPES.LEAGUE);
+              if (groups.length === 1 && prelim.length > 0) {
+                const lr = getLeagueFinalRankings(groups[0] as Player[], prelim);
+                if (lr) return <FinalRankingsDisplay rankings={lr} />;
+              }
             }
             return null;
           })()}

@@ -84,6 +84,8 @@ export const START_FORMATS: StartFormat[] = [
 // --- 次フェーズ選択肢 ---
 // 先頭の選択肢がデフォルト選択になる（決勝トーナメントをデフォルトに、
 // リーグ決勝は明示的に選択する運用）
+// ※1グループのみのリーグ戦では NextPhaseModal 側で
+//   「リーグ戦の結果で順位確定して終了」(done) が先頭に追加される
 export const NEXT_PHASE_OPTIONS: Record<string, NextPhaseOption[]> = {
   league: [
     { value: 'final_tournament', label: '決勝トーナメントに進む' },
@@ -92,6 +94,12 @@ export const NEXT_PHASE_OPTIONS: Record<string, NextPhaseOption[]> = {
   pre_tournament: [
     { value: 'final_tournament', label: '決勝トーナメントに進む' },
   ],
+};
+
+// 1グループのみのリーグ戦向け: リーグ結果で終了する選択肢
+export const FINISH_WITH_LEAGUE_OPTION: NextPhaseOption = {
+  value: 'done',
+  label: 'リーグ戦の結果で順位確定して終了',
 };
 
 // --- 結果タイプ定数 ---

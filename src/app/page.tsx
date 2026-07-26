@@ -28,7 +28,7 @@ import type { Match, PhaseType, FinalRanking, LeagueStanding, Player, Tournament
 // ==========================================
 // ページ種別
 // ==========================================
-type PageType = 'admin' | 'referee' | 'monitor' | 'spectator';
+type PageType = 'admin' | 'referee' | 'monitor' | 'spectator' | 'share';
 type RoleType = 'admin' | 'recorder' | 'viewer';
 
 // ==========================================
@@ -3004,17 +3004,18 @@ function UrlSharePanel() {
       </div>`).join('');
     w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>大会運営システム 接続用URL一覧</title>
       <style>
-        @page { size: A4 portrait; margin: 12mm; }
+        @page { size: A4 portrait; margin: 10mm; }
         * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { height: 100%; }
         body { font-family: 'Hiragino Sans', 'Yu Gothic', sans-serif; color: #111; }
-        h1 { font-size: 15pt; text-align: center; margin-bottom: 1mm; }
-        .sub { text-align: center; font-size: 9pt; color: #555; margin-bottom: 5mm; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
-        .card { border: 1px solid #bbb; border-radius: 3mm; padding: 3mm; text-align: center; }
-        .name { font-size: 11pt; font-weight: bold; margin-bottom: 1.5mm; }
-        img { width: 36mm; height: 36mm; }
-        .url { font-size: 7.5pt; margin-top: 1.5mm; word-break: break-all; }
-        .desc { font-size: 7.5pt; color: #555; margin-top: 1mm; }
+        h1 { font-size: 12pt; text-align: center; margin-bottom: 1mm; }
+        .sub { text-align: center; font-size: 8pt; color: #555; margin-bottom: 3mm; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2.5mm; }
+        .card { border: 1px solid #bbb; border-radius: 2mm; padding: 2mm; text-align: center; page-break-inside: avoid; }
+        .name { font-size: 10pt; font-weight: bold; margin-bottom: 1mm; }
+        img { width: 27mm; height: 27mm; }
+        .url { font-size: 7pt; margin-top: 1mm; word-break: break-all; }
+        .desc { font-size: 7pt; color: #555; margin-top: 0.5mm; }
       </style></head><body>
       <h1>日本拳法 孝徳会 大会運営システム 接続用URL</h1>
       <div class="sub">スマホ・タブレットのカメラでQRコードを読み取ってください</div>
@@ -3310,8 +3311,8 @@ function AdminPage() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [nextPhaseModal, setNextPhaseModal] = useState<{ catId: string; currentPhase: PhaseType } | null>(null);
   const [confirmRevert, setConfirmRevert] = useState<string | null>(null);
-  // 表示タブ: 運営管理 / 全コートの試合順・対戦表 / URL・QR共有
-  const [adminTab, setAdminTab] = useState<'manage' | 'schedule' | 'share'>('manage');
+  // 表示タブ: 運営管理 / 全コートの試合順・対戦表
+  const [adminTab, setAdminTab] = useState<'manage' | 'schedule'>('manage');
 
   const handleSubmitMatch = useCallback((m: Match) => {
     submitMatchResult(m);
@@ -3320,12 +3321,11 @@ function AdminPage() {
 
   return (
     <div>
-      {/* 表示タブ切替: 運営管理 / 試合順・対戦表（全コート） / URL・QR共有 */}
+      {/* 表示タブ切替: 運営管理 / 試合順・対戦表（全コート） */}
       <div className="flex gap-1 mb-3">
         {([
           { key: 'manage', label: '⚙️ 運営管理' },
           { key: 'schedule', label: '📋 試合順・対戦表（全コート）' },
-          { key: 'share', label: '🔗 URL・QR' },
         ] as const).map(t => (
           <button
             key={t.key}
@@ -3343,9 +3343,6 @@ function AdminPage() {
 
       {/* 全コートの試合順・対戦表タブ */}
       {adminTab === 'schedule' && <AllCourtsSchedulePanel />}
-
-      {/* URL・QR共有タブ */}
-      {adminTab === 'share' && <UrlSharePanel />}
 
       <div className={adminTab === 'manage' ? '' : 'hidden'}>
       {/* 統計グリッド */}
@@ -5808,6 +5805,7 @@ function TournamentApp({ role = 'admin', defaultCourt }: { role?: RoleType; defa
     { key: 'referee', label: '記録係' },
     { key: 'monitor', label: 'モニター' },
     { key: 'spectator', label: '観覧' },
+    { key: 'share', label: 'URL・QR' },
   ];
   // ロールに応じて表示するタブを制限
   const navItems = role === 'viewer'
@@ -5880,6 +5878,7 @@ function TournamentApp({ role = 'admin', defaultCourt }: { role?: RoleType; defa
         {page === 'referee' && <RefereePage fixedVenue={defaultCourt} />}
         {page === 'monitor' && <MonitorPage />}
         {page === 'spectator' && <SpectatorPage />}
+        {page === 'share' && <UrlSharePanel />}
       </main>
 
       {/* フェーズ完了通知（管理者はどのタブでも受け取れる） */}

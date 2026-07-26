@@ -449,10 +449,17 @@ export const useTournamentStore = create<TournamentState>()(
         });
       }
 
+      // 決勝のみのブラケット（例: 3人リーグ→上位2名）は最初から「決勝待ち」に入れる
+      // 決勝戦は通常の試合キューに乗せず、決勝コートでまとめて実施する運用のため
+      const hasNonFinalPlayable = newMatches.some(m =>
+        !m.isBye && !(m.round === result.totalRounds && !m.isThirdPlace)
+      );
+      const phaseAfter = hasNonFinalPlayable ? nextPhase : PHASE_TYPES.AWAITING_FINALS;
+
       set(s => ({
         allMatches: [...s.allMatches, ...newMatches],
         tournamentData: { ...s.tournamentData, [catId]: { totalRounds: result.totalRounds, bracketSize: result.bracketSize, phaseKey: nextPhase, hasThirdPlace: hasTP } },
-        catPhases: { ...s.catPhases, [catId]: nextPhase },
+        catPhases: { ...s.catPhases, [catId]: phaseAfter },
       }));
     }
   },

@@ -785,7 +785,10 @@ export const useTournamentStore = create<TournamentState>()(
   },
 }),
     {
-      name: 'kotokukai-tournament',
+      // デモページ(/demo)は専用のlocalStorageキーを使い、本番データと完全に分離する
+      name: typeof window !== 'undefined' && window.location.pathname.startsWith('/demo')
+        ? 'kotokukai-tournament-demo'
+        : 'kotokukai-tournament',
       // 関数（算出値・アクション）は保存しない。データのみ永続化
       partialize: (state) => ({
         categories: state.categories,

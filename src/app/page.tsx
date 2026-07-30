@@ -5678,7 +5678,7 @@ function SpectatorPage() {
 // ==========================================
 // メインコンポーネント
 // ==========================================
-function TournamentApp({ role = 'admin', defaultCourt }: { role?: RoleType; defaultCourt?: string }) {
+function TournamentApp({ role = 'admin', defaultCourt, demoMode = false }: { role?: RoleType; defaultCourt?: string; demoMode?: boolean }) {
   const initialPage: PageType = role === 'viewer' ? 'spectator' : role === 'recorder' ? 'referee' : 'admin';
   const [page, setPage] = useState<PageType>(initialPage);
   const [hydrated, setHydrated] = useState(false);
@@ -5719,10 +5719,21 @@ function TournamentApp({ role = 'admin', defaultCourt }: { role?: RoleType; defa
     };
   }, []);
 
+  // --- デモモード: サンプルデータを自動読込（クラウド同期は一切行わない） ---
+  const didDemoInit = useRef(false);
+  useEffect(() => {
+    if (!demoMode || didDemoInit.current) return;
+    didDemoInit.current = true;
+    const s = useTournamentStore.getState();
+    if (!s.initialized) s.initSample();
+  }, [demoMode]);
+
   // --- Firestore 同期 ---
   // 記録係・管理・モニター: リアルタイム監視（onSnapshot、約1秒で反映）
   // 観覧(viewer): 30秒間隔のポーリング（読み取り量節約のため。画面表示中のみ）
+  // デモモード: 同期なし（データは端末内のみ、実大会に影響しない）
   useEffect(() => {
+    if (demoMode) return;
     let unsubscribe: (() => void) | null = null;
     let pollTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -5784,17 +5795,18 @@ function TournamentApp({ role = 'admin', defaultCourt }: { role?: RoleType; defa
       if (unsubscribe) unsubscribe();
       if (pollTimer) clearInterval(pollTimer);
     };
-  }, [role]);
+  }, [role, demoMode]);
 
-  // 3. ローカルの変更をFirestoreに保存（リモート更新時はスキップ）
+  // 3. ローカルの変更をFirestoreに保存（リモート更新時はスキップ、デモは保存しない）
   useEffect(() => {
+    if (demoMode) return;
     const unsub = useTournamentStore.subscribe((state) => {
       if (!isRemoteUpdate.current) {
         saveToCloud(state as unknown as Record<string, unknown>);
       }
     });
     return unsub;
-  }, []);
+  }, [demoMode]);
 
   useEffect(() => {
     setHydrated(true);
@@ -5807,12 +5819,13 @@ function TournamentApp({ role = 'admin', defaultCourt }: { role?: RoleType; defa
     { key: 'spectator', label: '観覧' },
     { key: 'share', label: 'URL・QR' },
   ];
-  // ロールに応じて表示するタブを制限
-  const navItems = role === 'viewer'
+  // ロールに応じて表示するタブを制限（デモでは本番URLを含むURL・QRページは非表示）
+  const navItems = (role === 'viewer'
     ? allNavItems.filter(i => i.key === 'spectator')
     : role === 'recorder'
     ? allNavItems.filter(i => i.key === 'referee')
-    : allNavItems;
+    : allNavItems
+  ).filter(i => !(demoMode && i.key === 'share'));
 
   // Hydration待ち（localStorageからの復元完了まで）
   if (!hydrated) {
@@ -5832,22 +5845,26 @@ function TournamentApp({ role = 'admin', defaultCourt }: { role?: RoleType; defa
       <header className="bg-header-bg border-b-2 border-red-700 px-5 py-2.5 flex items-center justify-between sticky top-0 z-[100]">
         <div>
           <div className="text-lg font-extrabold text-white tracking-wide">
-            日本拳法 孝徳会 大会運営システム
+            {demoMode ? '日本拳法 大会運営システム' : '日本拳法 孝徳会 大会運営システム'}
           </div>
           <div className="text-[10px] text-gray-500 mt-0.5">
-            {role === 'viewer' ? '観覧用ページ' : role === 'recorder' ? '記録係用ページ' : 'Tournament Management System'}
+            {demoMode
+              ? 'デモ版 — データはこの端末にのみ保存されます'
+              : role === 'viewer' ? '観覧用ページ' : role === 'recorder' ? '記録係用ページ' : 'Tournament Management System'}
           </div>
           {/* 同期状態 */}
           <div className="flex items-center gap-1.5 mt-0.5">
             <span
               className="w-2 h-2 rounded-full"
               style={{
-                background: syncStatus === 'connected' ? '#22C55E' : syncStatus === 'connecting' ? '#F59E0B' : '#EF4444',
-                boxShadow: syncStatus === 'connected' ? '0 0 6px #22C55E' : 'none',
+                background: demoMode ? '#F59E0B' : syncStatus === 'connected' ? '#22C55E' : syncStatus === 'connecting' ? '#F59E0B' : '#EF4444',
+                boxShadow: demoMode ? '0 0 6px #F59E0B' : syncStatus === 'connected' ? '0 0 6px #22C55E' : 'none',
               }}
             />
             <span className="text-[10px] text-gray-400">
-              {syncStatus === 'connected'
+              {demoMode
+                ? '🎮 デモモード — 自由にお試しください'
+                : syncStatus === 'connected'
                 ? (role === 'viewer' ? '自動更新中（30秒間隔）' : 'リアルタイム同期中')
                 : syncStatus === 'connecting' ? '接続中...' : 'オフライン'}
             </span>
@@ -5911,11 +5928,13 @@ function TournamentApp({ role = 'admin', defaultCourt }: { role?: RoleType; defa
 
 // デフォルトエクスポート — URLパスでロールを判定
 // /recorder/a 〜 /recorder/d はコート固定の記録係専用ページ
+// /demo はクラウド同期なしのデモ版（コーポレートサイト掲載用）
 export default function Home() {
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
+  const isDemo = pathname.startsWith('/demo');
   const role: RoleType = pathname.startsWith('/viewer') ? 'viewer' : pathname.startsWith('/recorder') ? 'recorder' : 'admin';
   const courtMatch = pathname.match(/^\/recorder\/([a-dA-D])\/?$/);
   const fixedCourt = courtMatch ? courtMatch[1].toUpperCase() : undefined;
-  return <TournamentApp role={role} defaultCourt={fixedCourt} />;
+  return <TournamentApp role={role} defaultCourt={fixedCourt} demoMode={isDemo} />;
 }

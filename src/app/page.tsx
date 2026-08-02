@@ -19,6 +19,7 @@ import {
 } from '@/lib/constants';
 import { matchTypeLabel, matchTypeColor, isFinalMatch } from '@/lib/helpers';
 import QRCode from 'qrcode';
+import { AccessGate } from '@/components/AccessGate';
 import { calcStandings } from '@/lib/logic/league';
 import { getFinalRankings, getLeagueFinalRankings } from '@/lib/logic/rankings';
 import { calculateFinalScores } from '@/lib/logic/scoring';
@@ -5929,6 +5930,8 @@ function TournamentApp({ role = 'admin', defaultCourt, demoMode = false }: { rol
 // デフォルトエクスポート — URLパスでロールを判定
 // /recorder/a 〜 /recorder/d はコート固定の記録係専用ページ
 // /demo はクラウド同期なしのデモ版（コーポレートサイト掲載用）
+// 合言葉ゲート: 運営ページ（管理・記録係）のみ。
+//   デモと観覧は保護者・一般に広く配布するため合言葉なし
 export default function Home() {
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
@@ -5936,5 +5939,7 @@ export default function Home() {
   const role: RoleType = pathname.startsWith('/viewer') ? 'viewer' : pathname.startsWith('/recorder') ? 'recorder' : 'admin';
   const courtMatch = pathname.match(/^\/recorder\/([a-dA-D])\/?$/);
   const fixedCourt = courtMatch ? courtMatch[1].toUpperCase() : undefined;
-  return <TournamentApp role={role} defaultCourt={fixedCourt} demoMode={isDemo} />;
+  const app = <TournamentApp role={role} defaultCourt={fixedCourt} demoMode={isDemo} />;
+  const needsGate = !isDemo && role !== 'viewer';
+  return needsGate ? <AccessGate>{app}</AccessGate> : app;
 }
